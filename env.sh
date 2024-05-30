@@ -13,3 +13,6 @@ source ~/enhancing/bin/activate
 
 # install dependencies
 pip install -r requirements.txt
+
+# check if path was added to .bashrc
+# export PATH="$PATH:$HOME/bin/"

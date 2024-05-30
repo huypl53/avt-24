@@ -13,5 +13,5 @@ enhanced_im = hist_equalize(im)
 ```bash
 pyinstaller cli.py --onefile -n enhancing
 
-cp ./dist/enhancing /usr/local/bin/
+cp ./dist/enhancing ~/bin/
 ```
