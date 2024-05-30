@@ -16,7 +16,7 @@ pipeline {
 
     stage('deploy'){
       steps{
-        sh 'mv dist/enhancing /usr/local/bin/'
+        sh 'mv dist/enhancing ~/bin/'
       }
     }
 
