@@ -1,11 +1,11 @@
 import io
-import logging
 from typing import Callable, Union
 
 import cv2
 import numpy as np
 
 from connection import ftpTransfer
+from log import logger
 
 
 def read_np_image(read_func: Callable) -> Union[None, np.ndarray]:
@@ -19,7 +19,8 @@ def read_np_image(read_func: Callable) -> Union[None, np.ndarray]:
 
 
 def write_np_image(image: np.ndarray, extension: str, write_func: Callable) -> bool:
-    assert extension in [".jpg", ".png", ".tiff"]
+    valid_exts = [".jpg", ".png", ".tiff", ".tif"]
+    assert extension in valid_exts, f"Image extension must be in {valid_exts}"
     retval, buffer = cv2.imencode(extension, image)
     if not retval:
         return False

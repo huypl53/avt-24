@@ -1,8 +1,8 @@
 import argparse
-import logging
 import os
 
 from enhancing.core import adjust_gamma, hist_equalize
+from log import logger
 from service import read_ftp_image, write_ftp_image
 
 
@@ -12,7 +12,7 @@ def parse():
     parser.add_argument(
         "out_dir",
         type=str,
-        default="/data/",
+        default="/data/avt-enhance-result/",
         help="Directory to save image in FTP server",
     )
     parser.add_argument(
@@ -33,8 +33,9 @@ def main():
         # im = cv2.imread(im_path)
         im = read_ftp_image(im_path)
         if im is None:
-            logging.warning(f"Read {im_path} failed!")
+            logger.warning(f"Read {im_path} failed!")
             return
+        logger.info(f"{im_path} shape: {im.shape}")
         im_name = os.path.basename(im_path)
         bname, extension = im_name.rsplit(".", 1)
         extension = "." + extension
@@ -46,12 +47,15 @@ def main():
 
         enhanced_im = adjust_gamma(im, gamma)
         enhanced_im = hist_equalize(im)
+        logger.info(f"Enhance image done!")
         # enhanced_im_small = cv2.resize(enhanced_im, (n_w, n_h))
         # cv2.imwrite(result_path, enhanced_im)
         result_im_name = f"{bname}_result{extension}"
         result_path = os.path.join(out_dir, result_im_name)
+        logger.info(f"Write image to {result_path}")
         write_ftp_image(enhanced_im, extension, result_path)
-    except Exception:
+    except Exception as e:
+        logger.error(e)
         print("run `bash enhance --help`")
 
 

@@ -1,6 +1,7 @@
 import ftplib
-import logging
 from typing import BinaryIO
+
+from log import logger
 
 HOSTNAME = "dataprocess.online"
 PORT = 18921
@@ -19,24 +20,62 @@ class _FtpConnector:
 
     def connect(self, hostname: str, port: int, username: str, password: str):
         self.connect_status = self.ftp_server.connect(hostname, port)
-        print(f"FTP connect  to {hostname}: {self.connect_status}")
+        logger.info(f"FTP connect  to {hostname}: {self.connect_status}")
         self.login_status = self.ftp_server.login(username, password)
-        print(f"FTP login by {username}: {self.login_status}")
+        logger.info(f"FTP login by {username}: {self.login_status}")
+        self.ftp_server.cwd(WORK_DIR)
+        logger.info(f"cwd to {WORK_DIR}")
 
     def upload_file(self, file_path: str, file: BinaryIO) -> bool:
         try:
             self.ftp_server.storbinary(f"STOR {file_path}", file)
+            logger.info(f"Write {file_path} successfully!")
             return True
         except Exception as e:
-            logging.error(f"FTP write to {file_path} failed. Error: {e}")
+            logger.error(f"FTP write to {file_path} failed. Error: {e}")
             return False
 
     def download_file(self, file_path: str, file: BinaryIO) -> bool:
         try:
             self.ftp_server.retrbinary(f"RETR {file_path}", file.write)
+            logger.info(f"Download {file_path} successfully!")
             return True
         except Exception as e:
-            logging.error(f"FTP write to {file_path} failed. Error: {e}")
+            logger.error(f"FTP write to {file_path} failed. Error: {e}")
+            return False
+
+    def mkdir(self, dir_path: str) -> bool:
+        try:
+            if self.ftp_server.mkd(dir_path):
+                return True
+            return False
+        except Exception as e:
+            logger.info(f"Creating {dir_path} failed! Please restart program...")
+            return False
+
+    def cwd(self, path: str) -> bool:
+        current_dir = self.ftp_server.pwd()
+        try:
+            if self.ftp_server.cwd(path):
+                return True
+            self.ftp_server.cwd(current_dir)
+            return False
+        except Exception as e:
+            logger.error(e)
+            self.ftp_server.cwd(current_dir)
+            return False
+
+    def is_dir_existed(self, path: str) -> bool:
+        current_dir = self.ftp_server.pwd()
+        try:
+            if self.ftp_server.cwd(path):
+                self.ftp_server.cwd(current_dir)
+                return True
+            self.ftp_server.cwd(current_dir)
+            return False
+        except Exception as e:
+            logger.error(e)
+            self.ftp_server.cwd(current_dir)
             return False
 
     def close(self):
