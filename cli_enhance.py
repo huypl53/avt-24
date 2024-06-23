@@ -1,4 +1,7 @@
-from enhancing.__main__ import main
+import asyncio
+
+from enhancing.__main__ import async_main, cli_main
 
 if __name__ == "__main__":
-    main()
+    # cli_main()
+    asyncio.run(async_main())

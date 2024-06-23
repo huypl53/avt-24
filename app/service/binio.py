@@ -4,7 +4,7 @@ from typing import Callable, Union
 import cv2
 import numpy as np
 
-from connection import ftpTransfer
+from app.connection import ftpTransfer
 from log import logger
 
 

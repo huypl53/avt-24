@@ -1,9 +1,14 @@
 import argparse
+import asyncio
 import os
 
+from sqlalchemy import select
+
+from app.db.connector import get_db
+from app.model.task import TaskMd
+from app.service.binio import read_ftp_image, write_ftp_image
 from enhancing.core import adjust_gamma, hist_equalize
 from log import logger
-from service import read_ftp_image, write_ftp_image
 
 
 def parse():
@@ -22,7 +27,7 @@ def parse():
     return args
 
 
-def main():
+def cli_main():
     try:
 
         args = parse()
@@ -59,5 +64,28 @@ def main():
         print("run `bash enhance --help`")
 
 
+async def async_main():
+    a_session = anext(get_db())
+    session = await (a_session)
+    stmt = (
+        select(TaskMd)
+        # .where(TaskMd.task_type == 4)
+        .where(TaskMd.task_stat < 0).order_by(TaskMd.task_stat.desc())
+    )
+    tasks = await session.execute(stmt)
+    print(f"Tasks {list(tasks)}")
+    import pdb
+
+    pdb.set_trace()
+    print(tasks.scalars())
+    for e in tasks:
+        print(e)
+    for i, t in enumerate(list(tasks)):
+        print(i, dict(t))
+
+    # await asyncio.sleep(3)
+    await session.close()
+
+
 if __name__ == "__main__":
-    main()
+    cli_main()
