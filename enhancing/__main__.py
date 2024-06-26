@@ -1,11 +1,15 @@
 import argparse
 import asyncio
+import json
 import os
+from typing import List, Tuple
 
 from sqlalchemy import select
 
+from app.connection import ftpTransfer
 from app.db.connector import get_db
 from app.model.task import TaskMd
+from app.schema import EnhancementOutput, EnhancementParam
 from app.service.binio import read_ftp_image, write_ftp_image
 from enhancing.core import adjust_gamma, hist_equalize
 from log import logger
@@ -27,19 +31,14 @@ def parse():
     return args
 
 
-def cli_main():
+def process_image(im_path: str, out_dir: str, gamma=0.4) -> Tuple[bool, str]:
     try:
-
-        args = parse()
-        im_path = args.in_path
-        out_dir = args.out_dir
-        gamma = args.gamma
-
         # im = cv2.imread(im_path)
         im = read_ftp_image(im_path)
         if im is None:
-            logger.warning(f"Read {im_path} failed!")
-            return
+            msg = f"Read {im_path} failed!"
+            logger.warning(msg)
+            return False, msg
         logger.info(f"{im_path} shape: {im.shape}")
         im_name = os.path.basename(im_path)
         bname, extension = im_name.rsplit(".", 1)
@@ -59,6 +58,20 @@ def cli_main():
         result_path = os.path.join(out_dir, result_im_name)
         logger.info(f"Write image to {result_path}")
         write_ftp_image(enhanced_im, extension, result_path)
+        return True, result_path
+    except Exception as e:
+        logger.error(e)
+        print("run `bash enhance --help`")
+        return False, str(e)
+
+
+def cli_main():
+    try:
+        args = parse()
+        im_path = args.in_path
+        out_dir = args.out_dir
+        gamma = args.gamma
+        process_image(im_path, out_dir, gamma)
     except Exception as e:
         logger.error(e)
         print("run `bash enhance --help`")
@@ -69,22 +82,53 @@ async def async_main():
     session = await (a_session)
     stmt = (
         select(TaskMd)
-        # .where(TaskMd.task_type == 4)
-        .where(TaskMd.task_stat < 0).order_by(TaskMd.task_stat.desc())
+        .where(TaskMd.task_type == 4)
+        .where(TaskMd.task_stat < 0)
+        .order_by(TaskMd.task_stat.desc())
     )
-    tasks = await session.execute(stmt)
-    print(f"Tasks {list(tasks)}")
-    import pdb
+    results = await session.execute(stmt)
+    mapping_results = results.mappings().all()
+    tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
 
-    pdb.set_trace()
-    print(tasks.scalars())
-    for e in tasks:
-        print(e)
-    for i, t in enumerate(list(tasks)):
-        print(i, dict(t))
+    print("----------")
+    try:
+        # HACK: update selected rows
+        for i, t in enumerate(tasks):
+            if i == 1:
+                break  # update only one
+            param_dict = json.loads(t.task_param)
+            params = EnhancementParam(**param_dict)
+            ftpTransfer.mkdir(params.out_dir)
+            status, result = process_image(
+                params.input_file, params.out_dir, params.gamma
+            )
 
+            if not status:
+                t.task_stat = 0  # task got error
+                t.task_message = result
+                continue
+            output = EnhancementOutput(output_file=result)
+
+            t.task_param = json.dumps(params.model_dump())
+            t.task_output = json.dumps(output.model_dump())
+            t.process_id = os.getpid()
+            t.task_stat = 1  # task finished
+            t.task_message = "successful"
+    except Exception as e:
+        logger.error(e)
+
+    print("----------")
+    await session.commit()
     # await asyncio.sleep(3)
     await session.close()
+
+
+def row2dict(row):
+    d = {}
+    for column in row.__table__.columns:
+        d[column.name] = str(getattr(row, column.name))
+
+    return d
 
 
 if __name__ == "__main__":

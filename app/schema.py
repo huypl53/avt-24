@@ -21,3 +21,13 @@ class Management(BaseModel):
     task_eta: int
     task_output: str  # JSON of model's results
     task_message: str
+
+
+class EnhancementParam(BaseModel):
+    input_file: str
+    gamma: float = 0.4
+    out_dir: str = "/data/enhancement/"
+
+
+class EnhancementOutput(BaseModel):
+    output_file: str
