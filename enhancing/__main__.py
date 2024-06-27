@@ -78,49 +78,50 @@ def cli_main():
 
 
 async def async_main():
-    a_session = anext(get_db())
-    session = await (a_session)
-    stmt = (
-        select(TaskMd)
-        .where(TaskMd.task_type == 4)
-        .where(TaskMd.task_stat < 0)
-        .order_by(TaskMd.task_stat.desc())
-    )
-    results = await session.execute(stmt)
-    mapping_results = results.mappings().all()
-    tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
+    while True:
+        a_session = anext(get_db())
+        session = await (a_session)
+        stmt = (
+            select(TaskMd)
+            .where(TaskMd.task_type == 4)
+            .where(TaskMd.task_stat < 0)
+            .order_by(TaskMd.task_stat.desc())
+        )
+        results = await session.execute(stmt)
+        mapping_results = results.mappings().all()
+        tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
 
-    print("----------")
-    try:
-        # HACK: update selected rows
-        for i, t in enumerate(tasks):
-            if i == 1:
-                break  # update only one
-            param_dict = json.loads(t.task_param)
-            params = EnhancementParam(**param_dict)
-            ftpTransfer.mkdir(params.out_dir)
-            status, result = process_image(
-                params.input_file, params.out_dir, params.gamma
-            )
+        print("----------")
+        try:
+            # HACK: update selected rows
+            for i, t in enumerate(tasks):
+                if i == 1:
+                    break  # update only one
+                param_dict = json.loads(t.task_param)
+                params = EnhancementParam(**param_dict)
+                ftpTransfer.mkdir(params.out_dir)
+                status, result = process_image(
+                    params.input_file, params.out_dir, params.gamma
+                )
 
-            if not status:
-                t.task_stat = 0  # task got error
-                t.task_message = result
-                continue
-            output = EnhancementOutput(output_file=result)
+                if not status:
+                    t.task_stat = 0  # task got error
+                    t.task_message = result
+                    continue
+                output = EnhancementOutput(output_file=result)
 
-            t.task_param = json.dumps(params.model_dump())
-            t.task_output = json.dumps(output.model_dump())
-            t.process_id = os.getpid()
-            t.task_stat = 1  # task finished
-            t.task_message = "successful"
-    except Exception as e:
-        logger.error(e)
+                t.task_param = json.dumps(params.model_dump())
+                t.task_output = json.dumps(output.model_dump())
+                t.process_id = os.getpid()
+                t.task_stat = 1  # task finished
+                t.task_message = "successful"
+        except Exception as e:
+            logger.error(e)
 
-    print("----------")
-    await session.commit()
-    # await asyncio.sleep(3)
-    await session.close()
+        print("----------")
+        await session.commit()
+        await session.close()
+        await asyncio.sleep(3)
 
 
 def row2dict(row):
