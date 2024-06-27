@@ -83,7 +83,7 @@ async def async_main():
         session = await (a_session)
         stmt = (
             select(TaskMd)
-            .where(TaskMd.task_type == 4)
+            .where(TaskMd.type == 4)
             .where(TaskMd.task_stat < 0)
             .order_by(TaskMd.task_stat.desc())
         )

@@ -54,9 +54,9 @@ class BaseMd(DeclarativeBase):
 
 class TaskMd(BaseMd):
     __tablename__ = "avt_task"
-    task_id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    task_type: Mapped[int] = mapped_column(Integer)
-    task_creator: Mapped[str] = mapped_column(String)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    type: Mapped[int] = mapped_column(Integer)
+    creator: Mapped[str] = mapped_column(String)
     task_param: Mapped[str] = mapped_column(String)
     task_stat: Mapped[int] = mapped_column(Integer)
     worker_ip: Mapped[str] = mapped_column(String)
@@ -64,3 +64,6 @@ class TaskMd(BaseMd):
     task_eta: Mapped[int] = mapped_column(Integer)
     task_output: Mapped[str] = mapped_column(String)
     task_message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(String)
+    updated_at: Mapped[str] = mapped_column(String)
+    user_id: Mapped[int] = mapped_column(Integer)
