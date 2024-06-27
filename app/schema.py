@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import List
 
 from pydantic import BaseModel
 
@@ -12,7 +12,6 @@ class Management(BaseModel):
     # 5: detection (Huy)
     # 6: classification
     # 7: object finder (Học)
-    # 8:
     task_creator: str
     task_param: str
     task_stat: int
@@ -35,11 +34,19 @@ class EnhancementOutput(BaseModel):
 
 class DetectShipParam(BaseModel):
     input_file: str
-    config: str = './lsknet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py'
-    checkpoint: str = './epoch_3_050324.pth'
-    device: str = 'cuda:0'
+    config: str = "./lsknet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py"
+    checkpoint: str = "./epoch_3_050324.pth"
+    device: str = "cuda:0"
+    score_thr: float = 0.5
 
     patch_sizes: List[int] = [1024]
     patch_steps: List[int] = [824]
     img_ratios: List[float] = [1.0]
     merge_iou_thr: float = 0.1
+    out_dir: str = "/data/output_ship_detect/"
+
+
+class ExtractedShip(BaseModel):
+    id: str
+    path: str
+    coords: List[float]
