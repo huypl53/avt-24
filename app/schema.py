@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 
 from pydantic import BaseModel
 
@@ -31,3 +31,15 @@ class EnhancementParam(BaseModel):
 
 class EnhancementOutput(BaseModel):
     output_file: str
+
+
+class DetectShipParam(BaseModel):
+    input_file: str
+    config: str = './lsknet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py'
+    checkpoint: str = './epoch_3_050324.pth'
+    device: str = 'cuda:0'
+
+    patch_sizes: List[int] = [1024]
+    patch_steps: List[int] = [824]
+    img_ratios: List[float] = [1.0]
+    merge_iou_thr: float = 0.1
