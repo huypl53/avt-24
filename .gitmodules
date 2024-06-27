@@ -1,0 +1,3 @@
+[submodule "LSKNet"]
+	path = LSKNet
+	url = https://github.com/huypl53/LSKNet
