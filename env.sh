@@ -17,4 +17,4 @@ pip install -r requirements.txt
 # check if path was added to .bashrc
 # export PATH="$PATH:$HOME/bin/"
 #
-pyinstaller cli.py --onefile -n enhancing
+pyinstaller cli_enhance.py --onefile -n enhancing

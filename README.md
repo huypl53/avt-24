@@ -11,7 +11,7 @@ enhanced_im = hist_equalize(im)
 ## Binary distribution
 
 ```bash
-pyinstaller cli.py --onefile -n enhancing
+pyinstaller cli_enhance.py --onefile -n enhancing
 
 cp ./dist/enhancing ~/bin/
 ```
