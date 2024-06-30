@@ -14,8 +14,9 @@ from sqlalchemy import select
 from app.db.connector import get_db
 from app.model.task import TaskMd
 from app.schema import DetectShipParam, ExtractedShip
-from app.service.binio import ftpTransfer, read_ftp_image, write_ftp_image
+from app.service.binio import ftpTransfer, read_ftp_bin_image, write_ftp_image
 from log import logger
+from utils.raster import pixel_point_to_lat_long
 
 
 def image_rotate_without_crop(mat, angle):
@@ -233,7 +234,10 @@ async def async_main():
                 params.config, params.checkpoint, device=params.device
             )
 
-            im = read_ftp_image(params.input_file)
+            bin_im = read_ftp_bin_image(params.input_file)
+            image = np.asarray(bytearray(bin_im), dtype="uint8")
+            im = cv2.imdecode(image, cv2.IMREAD_COLOR)
+
             result = inference_detector_by_patches(
                 model,
                 im,
@@ -265,14 +269,21 @@ async def async_main():
             xyxyxyxy = xyxyxyxy[valid_idx]
 
             bname = os.path.basename(params.input_file).rsplit(".", 1)[1]
+
+            tmp_im_path = f"/tmp/{bname}.tif"
+            open(tmp_im_path, "wb").write(bin_im)
+            flat_xyxyxyxy = xyxyxyxy.reshape(-1, 2)
+            lat_long_points = pixel_point_to_lat_long(tmp_im_path, flat_xyxyxyxy)
+            lat_long_points = np.array(lat_long_points).reshape(-1, 4, 2)
+
             save_dir = os.path.join(params.out_dir, bname)
             ftpTransfer.mkdir(save_dir)
 
             detect_results: List[Dict] = []
-            for i, (p, xy) in enumerate(zip(patches, xyxyxyxy)):
+            for i, (p, xy) in enumerate(zip(patches, lat_long_points)):
                 im_id = f"{i:03d}"
                 path = os.path.join(save_dir, im_id) + ".png"
-                coords = json.dumps(xy.tolist())
+                coords = xy.tolist()
                 write_ftp_image(p, ".png", path)
                 detect_results.append(
                     ExtractedShip(id=im_id, path=path, coords=coords).model_dump()

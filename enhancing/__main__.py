@@ -10,7 +10,7 @@ from app.connection import ftpTransfer
 from app.db.connector import get_db
 from app.model.task import TaskMd
 from app.schema import EnhancementOutput, EnhancementParam
-from app.service.binio import read_ftp_image, write_ftp_image
+from app.service.binio import read_ftp_np_image, write_ftp_image
 from enhancing.core import adjust_gamma, hist_equalize
 from log import logger
 
@@ -34,7 +34,7 @@ def parse():
 def process_image(im_path: str, out_dir: str, gamma=0.4) -> Tuple[bool, str]:
     try:
         # im = cv2.imread(im_path)
-        im = read_ftp_image(im_path)
+        im = read_ftp_np_image(im_path)
         if im is None:
             msg = f"Read {im_path} failed!"
             logger.warning(msg)

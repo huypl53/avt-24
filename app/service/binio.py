@@ -30,9 +30,15 @@ def write_np_image(image: np.ndarray, extension: str, write_func: Callable) -> b
     return result
 
 
-def read_ftp_image(file_path: str):
+def read_ftp_np_image(file_path: str):
     c = lambda f: ftpTransfer.download_file(file_path, f)
     return read_np_image(c)
+
+
+def read_ftp_bin_image(file_path: str):
+    r = io.BytesIO()
+    ftpTransfer.download_file(file_path, r)
+    return r.getvalue()
 
 
 def write_ftp_image(image: np.ndarray, extension: str, file_path: str):
