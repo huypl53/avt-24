@@ -1,5 +1,10 @@
 # Image enhancement
 
+## Third-party tools
+```bash
+sudo apt-get install gdal-bin
+```
+
 ## Brightness adjustment & CLAHE
 
 ```python
@@ -14,4 +19,8 @@ enhanced_im = hist_equalize(im)
 pyinstaller cli_enhance.py --onefile -n enhancing
 
 cp ./dist/enhancing ~/bin/
+```
+## LSK inference
+```bash
+bash -i <path/to/scripts/run_lsk.sh>
 ```
