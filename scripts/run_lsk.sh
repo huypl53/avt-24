@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# p="" # path to this directory
-# cd $p
+cd $(dirname $(dirname $0) )
 conda activate openmmlab
 python cli_lsk.py
