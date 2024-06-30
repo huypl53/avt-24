@@ -39,7 +39,7 @@ def pixel_point_to_lat_long(
         corners["lowerRight"],
         corners["upperRight"],
     )
-    w, h, _ = result["size"]
+    w, h = result["size"]
 
     dxy = [(p[0] / w, p[1] / h) for p in points]
     ll_points: List[Tuple[float, float]] = []

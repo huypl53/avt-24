@@ -198,112 +198,124 @@ def xywhr2xyxyxyxy(x):
 async def async_main():
     a_session = anext(get_db())
     session = await (a_session)
-    stmt = (
-        select(TaskMd)
-        .where(TaskMd.type == 5)
-        .where(TaskMd.task_stat < 0)
-        .order_by(TaskMd.task_stat.desc())
-    )
-    results = await session.execute(stmt)
-    mapping_results = results.mappings().all()
-    tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
 
     params: DetectShipParam = None
     model = None
     current_task = None
-    print("----------")
-    try:
-        for i, t in enumerate(tasks):
-            current_task = t
-            if i == 1:
-                break  # update only one
-            param_dict = json.loads(t.task_param)
-            if not t.task_param and "input_file" in param_dict:
-                params = DetectShipParam(input_file=param_dict["input_file"])
-            elif (not params) or t.task_param != params.model_dump():
-                try:
-                    params = DetectShipParam(**param_dict)
-                except Exception as e:
-                    t.task_stat = 0
-                    t.task_message = str(e)
-            else:
-                t.task_stat = 0  # task got error
-                t.task_message = "Init model failed!"
-                continue
-            model = init_detector(
-                params.config, params.checkpoint, device=params.device
-            )
+    reload_model = False
 
-            bin_im = read_ftp_bin_image(params.input_file)
-            image = np.asarray(bytearray(bin_im), dtype="uint8")
-            im = cv2.imdecode(image, cv2.IMREAD_COLOR)
+    while True:
+        stmt = (
+            select(TaskMd)
+            .where(TaskMd.type == 5)
+            .where(TaskMd.task_stat < 0)
+            .order_by(TaskMd.task_stat.desc())
+        )
+        results = await session.execute(stmt)
+        mapping_results = results.mappings().all()
+        tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
 
-            result = inference_detector_by_patches(
-                model,
-                im,
-                params.patch_sizes,
-                params.patch_steps,
-                params.img_ratios,
-                params.merge_iou_thr,
-            )  # inference for batch
-            if not len(result):
+        print("----------")
+        try:
+            for i, t in enumerate(tasks):
+                current_task = t
+                if i == 1:
+                    break  # update only one
+                param_dict = json.loads(t.task_param)
+                if not t.task_param and "input_file" in param_dict:
+                    params = DetectShipParam(input_file=param_dict["input_file"])
+                    reload_model = True
+                elif (not params) or t.task_param != params.model_dump():
+                    try:
+                        params = DetectShipParam(**param_dict)
+                        reload_model = True
+                    except Exception as e:
+                        reload_model = False
+                        t.task_stat = 0
+                        t.task_message = str(e)
+                else:
+                    t.task_stat = 0  # task got error
+                    t.task_message = "Init model failed!"
+                    reload_model = False
+                    continue
+                if reload_model:
+                    model = init_detector(
+                        params.config, params.checkpoint, device=params.device
+                    )
+
+                bin_im = read_ftp_bin_image(params.input_file)
+                image = np.asarray(bytearray(bin_im), dtype="uint8")
+                im = cv2.imdecode(image, cv2.IMREAD_COLOR)
+
+                result = inference_detector_by_patches(
+                    model,
+                    im,
+                    params.patch_sizes,
+                    params.patch_steps,
+                    params.img_ratios,
+                    params.merge_iou_thr,
+                )  # inference for batch
+                if not len(result):
+                    t.task_stat = 1
+                    t.task_message = "No detection"
+                    continue
+                output = np.array(result[0])  # take first list of boxes from batch
+                output = output[output[..., -1] > params.score_thr]
+                output[..., 4] = np.degrees(output[..., 4])
+                xyxyxyxy = xywhr2xyxyxyxy(output)
+                rbboxes = [
+                    [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
+                    for r in output
+                ]
+
+                valid_idx: List[int] = []
+                patches: List[np.ndarray] = []
+                for i, box in enumerate(rbboxes):
+                    patch = crop_rotated_rectangle(
+                        im, box
+                    )  # patch if None if crop failed
+                    if patch is not None:
+                        patches.append(patch)
+                        valid_idx.append(i)
+
+                xyxyxyxy = xyxyxyxy[valid_idx]
+
+                bname = os.path.basename(params.input_file).rsplit(".", 1)[0]
+
+                tmp_im_path = f"/tmp/{bname}.tif"
+                open(tmp_im_path, "wb").write(bin_im)
+                flat_xyxyxyxy = xyxyxyxy.reshape(-1, 2)
+                lat_long_points = pixel_point_to_lat_long(tmp_im_path, flat_xyxyxyxy)
+                lat_long_points = np.array(lat_long_points).reshape(-1, 4, 2)
+
+                save_dir = os.path.join(params.out_dir, bname)
+                ftpTransfer.mkdir(save_dir)
+
+                detect_results: List[Dict] = []
+                for i, (p, xy) in enumerate(zip(patches, lat_long_points)):
+                    im_id = f"{i:03d}"
+                    path = os.path.join(save_dir, im_id) + ".png"
+                    coords = xy.tolist()
+                    write_ftp_image(p, ".png", path)
+                    detect_results.append(
+                        ExtractedShip(id=im_id, path=path, coords=coords).model_dump()
+                    )
+                # TODO: xyxyxyxy to real coordinates
+                # t.task_output = json.dumps(xyxyxyxy.tolist())
+                t.task_output = json.dumps(detect_results)
                 t.task_stat = 1
-                t.task_message = "No detection"
-                continue
-            output = np.array(result[0])  # take first list of boxes from batch
-            output = output[output[..., -1] > params.score_thr]
-            output[..., 4] = np.degrees(output[..., 4])
-            xyxyxyxy = xywhr2xyxyxyxy(output)
-            rbboxes = [
-                [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]] for r in output
-            ]
+                t.task_message = "Successful"
+                t.task_param = json.dumps(params.model_dump())
+                t.process_id = os.getpid()
+        except Exception as e:
+            logger.error(e)
+            if current_task:
+                current_task.task_message = str(e)
 
-            valid_idx: List[int] = []
-            patches: List[np.ndarray] = []
-            for i, box in enumerate(rbboxes):
-                patch = crop_rotated_rectangle(im, box)  # patch if None if crop failed
-                if patch:
-                    patches.append(patch)
-                    valid_idx.append(i)
-
-            xyxyxyxy = xyxyxyxy[valid_idx]
-
-            bname = os.path.basename(params.input_file).rsplit(".", 1)[1]
-
-            tmp_im_path = f"/tmp/{bname}.tif"
-            open(tmp_im_path, "wb").write(bin_im)
-            flat_xyxyxyxy = xyxyxyxy.reshape(-1, 2)
-            lat_long_points = pixel_point_to_lat_long(tmp_im_path, flat_xyxyxyxy)
-            lat_long_points = np.array(lat_long_points).reshape(-1, 4, 2)
-
-            save_dir = os.path.join(params.out_dir, bname)
-            ftpTransfer.mkdir(save_dir)
-
-            detect_results: List[Dict] = []
-            for i, (p, xy) in enumerate(zip(patches, lat_long_points)):
-                im_id = f"{i:03d}"
-                path = os.path.join(save_dir, im_id) + ".png"
-                coords = xy.tolist()
-                write_ftp_image(p, ".png", path)
-                detect_results.append(
-                    ExtractedShip(id=im_id, path=path, coords=coords).model_dump()
-                )
-            # TODO: xyxyxyxy to real coordinates
-            # t.task_output = json.dumps(xyxyxyxy.tolist())
-            t.task_output = json.dumps(detect_results)
-            t.task_stat = 1
-            t.task_message = "Successful"
-            t.task_param = json.dumps(params.model_dump())
-            t.process_id = os.getpid()
-    except Exception as e:
-        logger.error(e)
-        if current_task:
-            current_task.task_message = str(e)
-
-    print("----------")
-    await session.commit()
-    # await asyncio.sleep(3)
-    await session.close()
+        print("----------")
+        await session.commit()
+        await asyncio.sleep(3)
+        # await session.close()
 
 
 # Run this from outter directory

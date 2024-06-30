@@ -49,4 +49,4 @@ class DetectShipParam(BaseModel):
 class ExtractedShip(BaseModel):
     id: str
     path: str
-    coords: List[float]
+    coords: List[List[float]]
