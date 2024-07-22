@@ -262,7 +262,7 @@ async def async_main():
                 output = np.array(result[0])  # take first list of boxes from batch
                 output = output[output[..., -1] > params.score_thr]
                 output[..., 4] = np.degrees(output[..., 4])
-                xyxyxyxy = xywhr2xyxyxyxy(output)
+                # xyxyxyxy = xywhr2xyxyxyxy(output)
                 rbboxes = [
                     [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
                     for r in output
@@ -278,24 +278,32 @@ async def async_main():
                         patches.append(patch)
                         valid_idx.append(i)
 
-                xyxyxyxy = xyxyxyxy[valid_idx]
+                # xyxyxyxy = xyxyxyxy[valid_idx]
 
                 bname = os.path.basename(params.input_file).rsplit(".", 1)[0]
 
                 tmp_im_path = f"/tmp/{bname}.tif"
                 open(tmp_im_path, "wb").write(bin_im)
-                flat_xyxyxyxy = xyxyxyxy.reshape(-1, 2)
-                lat_long_points = pixel_point_to_lat_long(tmp_im_path, flat_xyxyxyxy)
-                lat_long_points = np.array(lat_long_points).reshape(-1, 4, 2)
+                # flat_xyxyxyxy = xyxyxyxy.reshape(-1, 2)
+
+                lat_long_center = pixel_point_to_lat_long(tmp_im_path, output[..., 0:2])
+                lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
+                lat_long_coords = np.concatenate(
+                    (lat_long_center, lat_long_wh, output[..., 4, np.newaxis])
+                )
 
                 save_dir = os.path.join(params.out_dir, bname)
                 ftpTransfer.mkdir(save_dir)
 
                 detect_results: List[Dict] = []
-                for i, (p, xy) in enumerate(zip(patches, lat_long_points)):
+                for i, (p, c) in enumerate(zip(patches, lat_long_coords)):
                     im_id = f"{i:03d}"
                     path = os.path.join(save_dir, im_id) + ".png"
-                    coords = xy.tolist()
+                    # Box xyxyxyxy
+                    # coords = xy.tolist()
+
+                    # Box cx, cy, w, h, angle
+                    coords = c.tolist()
                     write_ftp_image(p, ".png", path)
                     detect_results.append(
                         ExtractedShip(id=im_id, path=path, coords=coords).model_dump()
@@ -304,7 +312,7 @@ async def async_main():
                 # t.task_output = json.dumps(xyxyxyxy.tolist())
                 t.task_output = json.dumps(detect_results)
                 t.task_stat = 1
-                t.task_message = "Successful"
+                t.task_message = "EXIT_FINISHED"
                 t.task_param = json.dumps(params.model_dump())
                 t.process_id = os.getpid()
         except Exception as e:
