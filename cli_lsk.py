@@ -2,6 +2,7 @@ import asyncio
 import json
 import math
 import os
+import sys
 from typing import Dict, List, Tuple
 
 import cv2
@@ -16,7 +17,7 @@ from app.model.task import TaskMd
 from app.schema import DetectShipParam, ExtractedShip
 from app.service.binio import ftpTransfer, read_ftp_bin_image, write_ftp_image
 from log import logger
-from utils.raster import pixel_point_to_lat_long
+from utils.raster import haversine, pixel_point_to_lat_long
 
 
 def image_rotate_without_crop(mat, angle):
@@ -196,20 +197,24 @@ def xywhr2xyxyxyxy(x):
 
 
 async def async_main():
+    assert len(sys.argv) < 2
+    task_id = int(sys.argv[1])
     a_session = anext(get_db())
-    session = await (a_session)
+    session = await a_session
 
     params: DetectShipParam = None
     model = None
     current_task = None
     reload_model = False
 
-    while True:
+    counter = 0
+    while counter < 1:
+        counter += 1
         stmt = (
-            select(TaskMd)
-            .where(TaskMd.type == 5)
-            .where(TaskMd.task_stat < 0)
-            .order_by(TaskMd.task_stat.desc())
+            select(TaskMd).where(TaskMd.id == task_id)
+            # .where(TaskMd.type == 5)
+            # .where(TaskMd.task_stat < 0)
+            # .order_by(TaskMd.task_stat.desc())
         )
         results = await session.execute(stmt)
         mapping_results = results.mappings().all()
@@ -261,8 +266,8 @@ async def async_main():
                     continue
                 output = np.array(result[0])  # take first list of boxes from batch
                 output = output[output[..., -1] > params.score_thr]
+                xyxyxyxy = xywhr2xyxyxyxy(output)
                 output[..., 4] = np.degrees(output[..., 4])
-                # xyxyxyxy = xywhr2xyxyxyxy(output)
                 rbboxes = [
                     [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
                     for r in output
@@ -278,20 +283,28 @@ async def async_main():
                         patches.append(patch)
                         valid_idx.append(i)
 
-                # xyxyxyxy = xyxyxyxy[valid_idx]
-
-                bname = os.path.basename(params.input_file).rsplit(".", 1)[0]
-
-                tmp_im_path = f"/tmp/{bname}.tif"
-                open(tmp_im_path, "wb").write(bin_im)
+                output = output[valid_idx]
+                xyxyxyxy = xyxyxyxy[valid_idx]
                 # flat_xyxyxyxy = xyxyxyxy.reshape(-1, 2)
 
                 lat_long_center = pixel_point_to_lat_long(tmp_im_path, output[..., 0:2])
-                lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
-                lat_long_coords = np.concatenate(
-                    (lat_long_center, lat_long_wh, output[..., 4, np.newaxis])
+                # lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
+                lat_long_wh = np.array(
+                    [
+                        haversine(row[i][1], row[i][0], row[i + 1][1], row[i + 1][0])
+                        for i in range(2)
+                    ]
+                    for row in xyxyxyxy
                 )
 
+                # [[lat_c, lon_c, w_meter, h_meter, score, angle_degree],]
+                lat_long_coords = np.concatenate(
+                    (lat_long_center, lat_long_wh, output[..., 4:])
+                )
+
+                bname = os.path.basename(params.input_file).rsplit(".", 1)[0]
+                tmp_im_path = f"/tmp/{bname}.tif"
+                open(tmp_im_path, "wb").write(bin_im)
                 save_dir = os.path.join(params.out_dir, bname)
                 ftpTransfer.mkdir(save_dir)
 
@@ -312,7 +325,7 @@ async def async_main():
                 # t.task_output = json.dumps(xyxyxyxy.tolist())
                 t.task_output = json.dumps(detect_results)
                 t.task_stat = 1
-                t.task_message = "EXIT_FINISHED"
+                t.task_message = "Successfully"
                 t.task_param = json.dumps(params.model_dump())
                 t.process_id = os.getpid()
         except Exception as e:

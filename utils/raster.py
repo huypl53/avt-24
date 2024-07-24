@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import subprocess
 from typing import List, Tuple
@@ -25,7 +26,6 @@ def read_image_corner_coords(im_path: str) -> List[Tuple[float, float]]:
 def pixel_point_to_lat_long(
     im_path: str, points: List[Tuple[float, float]] | np.ndarray
 ) -> List[Tuple[float, float]]:
-
     """
     points: N points in format of (x, y)
     """
@@ -57,3 +57,38 @@ def pixel_point_to_lat_long(
         ll_points.append((lat, lon))
 
     return ll_points
+
+
+def haversine(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great-circle distance between two points
+    on the Earth specified in decimal degrees of latitude and longitude.
+    Returns the distance in meters.
+    """
+    # Convert decimal degrees to radians
+    lon1, lat1, lon2, lat2 = map(math.radians, [lon1, lat1, lon2, lat2])
+
+    # Haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    r = 6371000  # Radius of Earth in meters. Use 6371 for kilometers
+    distance_m = r * c
+
+    return distance_m
+
+
+if __name__ == "__main__":
+    # Example usage:
+    lon1, lat1 = -73.935242, 40.730610  # New York City coordinates
+    lon2, lat2 = -0.127758, 51.507351  # London coordinates
+
+    distance_m = haversine(lon1, lat1, lon2, lat2)
+    distance_km = distance_m / 1000
+
+    print(f"Distance: {distance_m:.2f} meters")
+    print(f"Distance: {distance_km:.2f} kilometers")
