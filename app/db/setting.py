@@ -13,6 +13,12 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str
     POSTGRES_DB: str
 
+    FTP_HOSTNAME: str
+    FTP_PORT: int
+    FTP_USERNAME: str
+    FTP_PASSWORD: str
+    FTP_WORK_DIR: str
+
     @computed_field
     @property
     def asyncpg_url(self) -> PostgresDsn:

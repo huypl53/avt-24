@@ -2,12 +2,7 @@ import ftplib
 from typing import BinaryIO
 
 from log import logger
-
-FTP_HOSTNAME = "dataprocess.online"
-FTP_PORT = 18921
-FTP_USERNAME = "avt"
-FTP_PASSWORD = "Pl0d9RQYUJCxZPGw6NJUcb8eJ6ZXdNMw"
-FTP_WORK_DIR = "/data"
+from app.db.setting import settings
 
 
 class _FtpConnector:
@@ -16,15 +11,20 @@ class _FtpConnector:
         self.ftp_server.encoding = "utf-8"
         self.connect_status = ""
         self.login_status = ""
-        self.connect(FTP_HOSTNAME, FTP_PORT, FTP_USERNAME, FTP_PASSWORD)
+        self.connect(
+            settings.FTP_HOSTNAME,
+            settings.FTP_PORT,
+            settings.FTP_USERNAME,
+            settings.FTP_PASSWORD,
+        )
 
     def connect(self, hostname: str, port: int, username: str, password: str):
         self.connect_status = self.ftp_server.connect(hostname, port)
         logger.info(f"FTP connect  to {hostname}: {self.connect_status}")
         self.login_status = self.ftp_server.login(username, password)
         logger.info(f"FTP login by {username}: {self.login_status}")
-        self.ftp_server.cwd(FTP_WORK_DIR)
-        logger.info(f"cwd to {FTP_WORK_DIR}")
+        self.ftp_server.cwd(settings.FTP_WORK_DIR)
+        logger.info(f"cwd to {settings.FTP_WORK_DIR}")
 
     def upload_file(self, file_path: str, file: BinaryIO) -> bool:
         try:
