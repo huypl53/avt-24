@@ -197,8 +197,8 @@ def xywhr2xyxyxyxy(x):
 
 
 async def async_main():
-    assert len(sys.argv) < 2
-    task_id = int(sys.argv[1])
+    # assert len(sys.argv) < 2
+    # task_id = int(sys.argv[1])
     a_session = anext(get_db())
     session = await a_session
 
@@ -207,14 +207,15 @@ async def async_main():
     current_task = None
     reload_model = False
 
-    counter = 0
-    while counter < 1:
-        counter += 1
+    # counter = 0
+    while True:
+        # counter += 1
         stmt = (
-            select(TaskMd).where(TaskMd.id == task_id)
-            # .where(TaskMd.type == 5)
-            # .where(TaskMd.task_stat < 0)
-            # .order_by(TaskMd.task_stat.desc())
+            select(TaskMd)
+            # .where(TaskMd.id == task_id)
+            .where(TaskMd.type == 5)  # task type of ship detection
+            .where(TaskMd.task_stat < 0)
+            .order_by(TaskMd.task_stat.desc())
         )
         results = await session.execute(stmt)
         mapping_results = results.mappings().all()
