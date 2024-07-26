@@ -25,7 +25,7 @@ class Management(BaseModel):
 class EnhancementParam(BaseModel):
     input_file: str
     gamma: float = 0.4
-    out_dir: str = "/data/enhancement/"
+    out_dir: str = "/data/RASTER_ARCHIVED/"
 
 
 class EnhancementOutput(BaseModel):
@@ -45,6 +45,7 @@ class DetectShipParam(BaseModel):
     img_ratios: List[float] = [1.0]
     merge_iou_thr: float = 0.1
     out_dir: str = "/data/output_ship_detect/"
+    # tmp_dir: str = "/tmp/"
 
 
 class ExtractedShip(BaseModel):

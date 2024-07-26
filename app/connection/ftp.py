@@ -1,8 +1,8 @@
 import ftplib
 from typing import BinaryIO
 
-from log import logger
 from app.db.setting import settings
+from log import logger
 
 
 class _FtpConnector:
@@ -50,7 +50,9 @@ class _FtpConnector:
                 return True
             return False
         except Exception as e:
-            logger.info(f"Creating {dir_path} failed! Please restart program...")
+            logger.info(
+                f"Creating {dir_path} failed! Please restart program... FTP error: {e}. "
+            )
             return False
 
     def cwd(self, path: str) -> bool:
