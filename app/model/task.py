@@ -55,7 +55,7 @@ class BaseMd(DeclarativeBase):
 class TaskMd(BaseMd):
     __tablename__ = "avt_task"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    type: Mapped[int] = mapped_column(Integer)
+    task_type: Mapped[int] = mapped_column(Integer)
     creator: Mapped[str] = mapped_column(String)
     task_param: Mapped[str] = mapped_column(String)
     task_stat: Mapped[int] = mapped_column(Integer)

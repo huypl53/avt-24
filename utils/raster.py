@@ -4,6 +4,7 @@ import os
 import subprocess
 from typing import List, Tuple
 
+import geopy.distance
 import numpy as np
 
 
@@ -30,15 +31,22 @@ def pixel_point_to_lat_long(
     points: N points in format of (x, y)
     """
     # 'size': [9982, 5484],  width, height
+    # check more at https://gdal.org/programs/gdalinfo.html
+
     r = subprocess.run(["gdalinfo", im_path, "-json"], capture_output=True, text=True)
     result = json.loads(r.stdout)
-    corners = result["cornerCoordinates"]
-    tl, bl, br, tr = (
-        corners["upperLeft"],
-        corners["lowerLeft"],
-        corners["lowerRight"],
-        corners["upperRight"],
-    )
+
+    # corners = result["cornerCoordinates"]
+    # tl, bl, br, tr = (
+    #     corners["upperLeft"],
+    #     corners["lowerLeft"],
+    #     corners["lowerRight"],
+    #     corners["upperRight"],
+    # )
+
+    # decimal degree
+    corners = result["wgs84Extent"]["coordinates"]
+    tl, bl, br, tr = corners
     w, h = result["size"]
 
     dxy = [(p[0] / w, p[1] / h) for p in points]
@@ -46,17 +54,21 @@ def pixel_point_to_lat_long(
     for d in dxy:
         dx, dy = d
 
-        lat_top = tl[0] + (tr[0] - tl[0]) * dx
-        lat_bot = bl[0] + (br[0] - bl[0]) * dx
+        lat_top = tl[1] + (tr[1] - tl[1]) * dx
+        lat_bot = bl[1] + (br[1] - bl[1]) * dx
         lat = lat_top + (lat_bot - lat_top) * dy
 
-        lon_top = tl[1] + (tr[1] - tl[1]) * dx
-        lon_bot = bl[1] + (br[1] - bl[1]) * dx
+        lon_top = tl[0] + (tr[0] - tl[0]) * dx
+        lon_bot = bl[0] + (br[0] - bl[0]) * dx
         lon = lon_top + (lon_bot - lon_top) * dy
 
         ll_points.append((lat, lon))
 
     return ll_points
+
+
+def latlong2meter(lon1, lat1, lon2, lat2):
+    return geopy.distance.geodesic((lon1, lat1), (lon2, lat2)).m
 
 
 def haversine(lon1, lat1, lon2, lat2):
