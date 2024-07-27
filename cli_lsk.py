@@ -297,7 +297,7 @@ async def async_main():
 
                 output = output[valid_idx]
                 xyxyxyxy = xyxyxyxy[valid_idx]
-                # flat_xyxyxyxy = xyxyxyxy.reshape(-1, 2)
+                flat_xy = xyxyxyxy.reshape(-1, 2)
 
                 bname = os.path.basename(params.input_file).rsplit(".", 1)[0]
                 tmp_im_path = f"/tmp/{bname}.tif"
@@ -313,6 +313,9 @@ async def async_main():
                     t.task_stat = 0
                     t.task_message = "Read coordinates from image failed!"
                     continue
+
+                latlong_xy = pixel_point_to_lat_long(tmp_im_path, flat_xy)
+                latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4, 2)
                 # lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
                 lat_long_wh = np.array(
                     [
@@ -322,7 +325,7 @@ async def async_main():
                             )
                             for i in range(2)
                         ]
-                        for row in xyxyxyxy
+                        for row in latlong_xyxyxyxy
                     ]
                 )
 

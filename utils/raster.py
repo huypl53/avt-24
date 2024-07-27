@@ -46,7 +46,7 @@ def pixel_point_to_lat_long(
 
     # decimal degree
     corners = result["wgs84Extent"]["coordinates"]
-    tl, bl, br, tr = corners
+    tl, bl, br, tr = corners[0][:4]
     w, h = result["size"]
 
     dxy = [(p[0] / w, p[1] / h) for p in points]
@@ -68,7 +68,7 @@ def pixel_point_to_lat_long(
 
 
 def latlong2meter(lon1, lat1, lon2, lat2):
-    return geopy.distance.geodesic((lon1, lat1), (lon2, lat2)).m
+    return geopy.distance.geodesic((lat1, lon1), (lat2, lon2)).m
 
 
 def haversine(lon1, lat1, lon2, lat2):
