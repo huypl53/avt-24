@@ -1,8 +1,8 @@
 import ftplib
 from typing import BinaryIO
 
-from log import logger
 from app.db.setting import settings
+from log import logger
 
 
 class _FtpConnector:
@@ -29,6 +29,7 @@ class _FtpConnector:
     def upload_file(self, file_path: str, file: BinaryIO) -> bool:
         try:
             self.ftp_server.storbinary(f"STOR {file_path}", file)
+            self.ftp_server.sendcmd(f"SITE CHMOD {settings.FTP_FILE_PERM} {file_path}")
             logger.info(f"Write {file_path} successfully!")
             return True
         except Exception as e:

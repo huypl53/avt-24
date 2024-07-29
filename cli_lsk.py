@@ -359,6 +359,8 @@ async def async_main():
             if current_task:
                 current_task.task_message = str(e)
         finally:
+            if os.path.isfile(tmp_im_path):
+                os.remove(tmp_im_path)
             await session.commit()
 
         print("----------")
