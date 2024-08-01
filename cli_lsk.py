@@ -125,7 +125,7 @@ async def async_main():
                 flat_xy = xyxyxyxy.reshape(-1, 2)
 
                 bname = os.path.basename(params.input_file).rsplit(".", 1)[0]
-                tmp_im_path = f"/tmp/{bname}.tif"
+                tmp_im_path = f"./tmp/{bname}.tif"
                 open(tmp_im_path, "wb").write(bin_im)
                 save_dir = os.path.join(params.out_dir, bname)
                 ftpTransfer.mkdir(save_dir)
@@ -185,13 +185,13 @@ async def async_main():
                 t.task_message = "Successfully"
                 t.task_param = json.dumps(params.model_dump())
                 t.process_id = os.getpid()
+                if os.path.isfile(tmp_im_path):
+                    os.remove(tmp_im_path)
         except Exception as e:
             logger.error(e)
             if current_task:
                 current_task.task_message = str(e)
         finally:
-            if os.path.isfile(tmp_im_path):
-                os.remove(tmp_im_path)
             await session.commit()
 
         print("----------")
