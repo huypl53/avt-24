@@ -44,11 +44,10 @@ class DetectShipParam(BaseModel):
     patch_steps: List[int] = [824]
     img_ratios: List[float] = [1.0]
     merge_iou_thr: float = 0.1
-    out_dir: str = "/data/output_ship_detect/"
-    # tmp_dir: str = "/tmp/"
+    out_dir: str = "/data/RASTER_PREPR/output_ship_detect/"
 
 
 class ExtractedShip(BaseModel):
     id: str
     path: str
-    coords: List[List[float]]
+    coords: List[float]

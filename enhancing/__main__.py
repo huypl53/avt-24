@@ -80,10 +80,10 @@ def cli_main():
 async def async_main():
     while True:
         a_session = anext(get_db())
-        session = await (a_session)
+        session = await a_session
         stmt = (
             select(TaskMd)
-            .where(TaskMd.type == 4)
+            .where(TaskMd.task_type == 4)
             .where(TaskMd.task_stat < 0)
             .order_by(TaskMd.task_stat.desc())
         )

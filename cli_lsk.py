@@ -17,7 +17,7 @@ from app.schema import DetectShipParam, ExtractedShip
 from app.service.binio import ftpTransfer, read_ftp_bin_image, write_ftp_image
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
-from utils.raster import haversine, pixel_point_to_lat_long
+from utils.raster import latlong2meter, pixel_point_to_lat_long
 
 
 async def async_main():
@@ -37,7 +37,7 @@ async def async_main():
         stmt = (
             select(TaskMd)
             # .where(TaskMd.id == task_id)
-            .where(TaskMd.type == 5)  # task type of ship detection
+            .where(TaskMd.task_type == 5)  # task type of ship detection
             .where(TaskMd.task_stat < 0)
             .order_by(TaskMd.task_stat.desc())
         )
@@ -52,28 +52,33 @@ async def async_main():
                 if i == 1:
                     break  # update only one
                 param_dict = json.loads(t.task_param)
-                if not t.task_param and "input_file" in param_dict:
-                    params = DetectShipParam(input_file=param_dict["input_file"])
-                    reload_model = True
-                elif (not params) or t.task_param != params.model_dump():
-                    try:
-                        params = DetectShipParam(**param_dict)
-                        reload_model = True
-                    except Exception as e:
-                        reload_model = False
-                        t.task_stat = 0
-                        t.task_message = str(e)
-                else:
-                    t.task_stat = 0  # task got error
-                    t.task_message = "Init model failed!"
-                    reload_model = False
-                    continue
-                if reload_model:
+                params = DetectShipParam(**param_dict)
+                # if not t.task_param and "input_file" in param_dict:
+                #     params = DetectShipParam(input_file=param_dict["input_file"])
+                #     reload_model = True
+                # elif (not params) or t.task_param != params.model_dump():
+                #     try:
+                #         params = DetectShipParam(**param_dict)
+                #         # reload_model = True
+                #     except Exception as e:
+                #         reload_model = False
+                #         t.task_stat = 0
+                #         t.task_message = str(e)
+                # else:
+                #     t.task_stat = 0  # task got error
+                #     t.task_message = "Init model failed!"
+                #     reload_model = False
+                #     continue
+                if not reload_model:
                     model = init_detector(
                         params.config, params.checkpoint, device=params.device
                     )
+                    reload_model = True
 
                 bin_im = read_ftp_bin_image(params.input_file)
+                if not bin_im:
+                    t.task_stat = 0
+                    t.task_message = f"Read image failed at {params.input_file}"
                 image = np.asarray(bytearray(bin_im), dtype="uint8")
                 im = cv2.imdecode(image, cv2.IMREAD_COLOR)
 
@@ -90,7 +95,13 @@ async def async_main():
                     t.task_message = "No detection"
                     continue
                 output = np.array(result[0])  # take first list of boxes from batch
-                output = output[output[..., -1] > params.score_thr]
+
+                # TODO: handle score thresh
+                # output = output[output[..., -1] > params.score_thr]
+
+                if not len(output):
+                    t.task_stat = 1
+                    t.task_message = "No above-score detection"
                 xyxyxyxy = xywhr2xyxyxyxy(output)
                 output[..., 4] = np.degrees(output[..., 4])
                 rbboxes = [
@@ -110,28 +121,42 @@ async def async_main():
 
                 output = output[valid_idx]
                 xyxyxyxy = xyxyxyxy[valid_idx]
-                # flat_xyxyxyxy = xyxyxyxy.reshape(-1, 2)
-
-                lat_long_center = pixel_point_to_lat_long(tmp_im_path, output[..., 0:2])
-                # lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
-                lat_long_wh = np.array(
-                    [
-                        haversine(row[i][1], row[i][0], row[i + 1][1], row[i + 1][0])
-                        for i in range(2)
-                    ]
-                    for row in xyxyxyxy
-                )
-
-                # [[lat_c, lon_c, w_meter, h_meter, score, angle_degree],]
-                lat_long_coords = np.concatenate(
-                    (lat_long_center, lat_long_wh, output[..., 4:])
-                )
+                flat_xy = xyxyxyxy.reshape(-1, 2)
 
                 bname = os.path.basename(params.input_file).rsplit(".", 1)[0]
                 tmp_im_path = f"/tmp/{bname}.tif"
                 open(tmp_im_path, "wb").write(bin_im)
                 save_dir = os.path.join(params.out_dir, bname)
                 ftpTransfer.mkdir(save_dir)
+
+                try:
+                    lat_long_center = pixel_point_to_lat_long(
+                        tmp_im_path, output[..., 0:2]
+                    )
+                except:
+                    t.task_stat = 0
+                    t.task_message = "Read coordinates from image failed!"
+                    continue
+
+                latlong_xy = pixel_point_to_lat_long(tmp_im_path, flat_xy)
+                latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4, 2)
+                # lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
+                lat_long_wh = np.array(
+                    [
+                        [
+                            latlong2meter(
+                                row[i][1], row[i][0], row[i + 1][1], row[i + 1][0]
+                            )
+                            for i in range(2)
+                        ]
+                        for row in latlong_xyxyxyxy
+                    ]
+                )
+
+                # [[lat_c, lon_c, w_meter, h_meter, score, angle_degree],]
+                lat_long_coords = np.concatenate(
+                    (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
+                )
 
                 detect_results: List[Dict] = []
                 for i, (p, c) in enumerate(zip(patches, lat_long_coords)):
@@ -157,9 +182,12 @@ async def async_main():
             logger.error(e)
             if current_task:
                 current_task.task_message = str(e)
+        finally:
+            if os.path.isfile(tmp_im_path):
+                os.remove(tmp_im_path)
+            await session.commit()
 
         print("----------")
-        await session.commit()
         await asyncio.sleep(3)
         # await session.close()
 

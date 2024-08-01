@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     FTP_USERNAME: str
     FTP_PASSWORD: str
     FTP_WORK_DIR: str
+    FTP_FILE_PERM: str
 
     @computed_field
     @property
