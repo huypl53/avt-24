@@ -109,6 +109,7 @@ async def async_main():
                     for r in output
                 ]
 
+                # Pick only valid boxes that provide rectangle
                 valid_idx: List[int] = []
                 patches: List[np.ndarray] = []
                 for i, box in enumerate(rbboxes):
@@ -128,6 +129,12 @@ async def async_main():
                 open(tmp_im_path, "wb").write(bin_im)
                 save_dir = os.path.join(params.out_dir, bname)
                 ftpTransfer.mkdir(save_dir)
+
+                # Convert angles to `Bearings maths`
+                output[..., 4] -= 90
+                angles = output[..., 4]
+                output[..., 4][angles > 0] = 360 - angles[angles > 0]
+                output[..., 4][angles < 0] = -angles[angles < 0]
 
                 try:
                     lat_long_center = pixel_point_to_lat_long(
