@@ -8,6 +8,7 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 import torch
+from dictdiffer import diff
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import select
@@ -199,10 +200,8 @@ def xywhr2xyxyxyxy(x):
 async def async_main():
     # assert len(sys.argv) < 2
     # task_id = int(sys.argv[1])
-    a_session = anext(get_db())
-    session = await a_session
 
-    params: DetectShipParam = None
+    params: DetectShipParam = {}
     model = None
     current_task = None
     reload_model = False
@@ -210,6 +209,8 @@ async def async_main():
     # counter = 0
     while True:
         # counter += 1
+        a_session = anext(get_db())
+        session = await a_session
         stmt = (
             select(TaskMd)
             # .where(TaskMd.id == task_id)
@@ -225,31 +226,24 @@ async def async_main():
         try:
             for i, t in enumerate(tasks):
                 current_task = t
-                if i == 1:
-                    break  # update only one
+                t.task_stat = 2  # task is checked
+                session.commit()
+
+                # if i == 1:
+                #     break  # update only one
                 param_dict = json.loads(t.task_param)
-                params = DetectShipParam(**param_dict)
-                # if not t.task_param and "input_file" in param_dict:
-                #     params = DetectShipParam(input_file=param_dict["input_file"])
-                #     reload_model = True
-                # elif (not params) or t.task_param != params.model_dump():
-                #     try:
-                #         params = DetectShipParam(**param_dict)
-                #         # reload_model = True
-                #     except Exception as e:
-                #         reload_model = False
-                #         t.task_stat = 0
-                #         t.task_message = str(e)
-                # else:
-                #     t.task_stat = 0  # task got error
-                #     t.task_message = "Init model failed!"
-                #     reload_model = False
-                #     continue
-                if not reload_model:
+                new_params_cnt = len(list(diff(param_dict, dict(params))))
+                if new_params_cnt:
+                    reload_model = True
+                    default_conf = DetectShipParam().model_dump()
+                    default_conf.update(param_dict)
+                    params = DetectShipParam(**default_conf)
+
+                if reload_model:
                     model = init_detector(
                         params.config, params.checkpoint, device=params.device
                     )
-                    reload_model = True
+                    reload_model = False
 
                 bin_im = read_ftp_bin_image(params.input_file)
                 if not bin_im:
