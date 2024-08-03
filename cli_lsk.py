@@ -92,7 +92,7 @@ async def async_main():
                 output = np.array(result[0])  # take first list of boxes from batch
 
                 # TODO: handle score thresh
-                # output = output[output[..., -1] > params.score_thr]
+                output = output[output[..., -1] > params.score_thr]
 
                 if not len(output):
                     t.task_stat = 1

@@ -38,7 +38,7 @@ class DetectShipParam(BaseModel):
     config: str = "./lsknet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py"
     checkpoint: str = "./epoch_3_050324.pth"
     device: str = "cuda:0"
-    score_thr: float = 0.5
+    score_thr: float = 0.3
 
     patch_sizes: List[int] = [1024]
     patch_steps: List[int] = [824]
