@@ -48,10 +48,15 @@ class _FtpConnector:
     def mkdir(self, dir_path: str) -> bool:
         try:
             if self.ftp_server.mkd(dir_path):
+                self.ftp_server.sendcmd(
+                    f"SITE CHMOD {settings.FTP_FILE_PERM} {dir_path}"
+                )
                 return True
             return False
         except Exception as e:
-            logger.info(f"Creating {dir_path} failed! Please restart program...")
+            logger.info(
+                f"Creating {dir_path} failed! Please restart program... FTP error: {e}. "
+            )
             return False
 
     def cwd(self, path: str) -> bool:

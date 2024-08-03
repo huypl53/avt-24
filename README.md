@@ -1,5 +1,7 @@
 # Image enhancement
 
+> Python version 3.10.4
+
 ## Third-party tools
 
 ```bash
@@ -28,6 +30,12 @@ cp ./dist/enhancing ~/bin/
 
 ```bash
 git clone -q https://github.com/huypl53/LSKNet/ lsknet
+```
+
+- Install dependencies
+
+```bash
+bash ./scripts/install_requirements.sh
 ```
 
 - Start program

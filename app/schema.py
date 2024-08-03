@@ -25,7 +25,7 @@ class Management(BaseModel):
 class EnhancementParam(BaseModel):
     input_file: str
     gamma: float = 0.4
-    out_dir: str = "/data/enhancement/"
+    out_dir: str = "/data/RASTER_ARCHIVED/"
 
 
 class EnhancementOutput(BaseModel):

@@ -27,3 +27,4 @@ pip install pydantic_settings==2.3.4
 pip install SQLAlchemy==2.0.31
 pip install geopy
 pip install dictdiffer==0.9.0
+pip install matplotlib==3.9.1
