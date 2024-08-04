@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -51,3 +51,4 @@ class ExtractedShip(BaseModel):
     id: str
     path: str
     coords: List[float]
+    lb_path: Optional[str]

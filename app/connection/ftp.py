@@ -48,9 +48,7 @@ class _FtpConnector:
     def mkdir(self, dir_path: str) -> bool:
         try:
             if self.ftp_server.mkd(dir_path):
-                self.ftp_server.sendcmd(
-                    f"SITE CHMOD {settings.FTP_FILE_PERM} {dir_path}"
-                )
+                self.ftp_server.sendcmd(f"SITE CHMOD 777 {dir_path}")
                 return True
             return False
         except Exception as e:
