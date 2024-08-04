@@ -8,10 +8,11 @@ import numpy as np
 from dictdiffer import diff
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.connector import get_db
+from app.db.connector import AsyncSessionFactory, get_db
+from app.db.thread import DbThread
 from app.model.task import TaskMd
 from app.schema import DetectShipParam, ExtractedShip
 from app.service.binio import (
@@ -33,6 +34,31 @@ async def update_failed_task(
     t.task_message = msg
     t.task_stat = 0
     await session.commit()
+
+
+def update_task_chronologically(
+    stmt: Select[Tuple[TaskMd]], session: AsyncSession, start=2, step: int = 1
+):
+    async def run():
+        results = await session.execute(stmt)
+        result = results.first()
+        if not result:
+            logger.warning(f"No task for Select: {stmt}")
+            return
+        task: TaskMd | None = result[0]
+        if not task:
+            logger.warning(f"No task for Select: {stmt}")
+            return
+        while True:
+            task_stat = task.task_stat
+            if task_stat is None:
+                task_stat = start
+            task.task_stat = task_stat + step
+            await asyncio.sleep(step)
+            await session.commit()
+            yield
+
+    return run
 
 
 async def async_main():
@@ -62,8 +88,21 @@ async def async_main():
         tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
 
         print("----------")
+        db_thread: DbThread = None
         try:
             for i, t in enumerate(tasks):
+                if db_thread and db_thread.is_alive():
+                    db_thread.stop()
+                    db_thread.join()
+                db_thread = DbThread(
+                    AsyncSessionFactory,
+                    lambda sess: update_task_chronologically(
+                        select(TaskMd).where(TaskMd.id == t.id), sess
+                    ),
+                )
+                db_thread.start()
+
+                await asyncio.sleep(15)
                 current_task = t
                 t.task_stat = 2  # task is checked
                 t.task_message = "Task is being processed"
@@ -221,6 +260,9 @@ async def async_main():
                 session,
             )
         finally:
+            if db_thread and db_thread.is_alive():
+                db_thread.stop()
+                db_thread.join()
             await session.commit()
 
         print("----------")
