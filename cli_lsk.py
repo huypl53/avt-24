@@ -8,7 +8,8 @@ import numpy as np
 from dictdiffer import diff
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, text
+from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connector import AsyncSessionFactory, get_db
@@ -25,6 +26,8 @@ from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
 from utils.raster import latlong2meter, pixel_point_to_lat_long
 
+DETECT_TASK_TYPE = 5
+
 
 async def update_failed_task(
     t: TaskMd, msg: str, session: AsyncSession, task_stat: int = 0
@@ -37,26 +40,45 @@ async def update_failed_task(
 
 
 def update_task_chronologically(
-    stmt: Select[Tuple[TaskMd]], session: AsyncSession, start=2, step: int = 1
+    task_id: Select[Tuple[TaskMd]],
+    db_session: AsyncSession = None,
+    start=2,
+    step: int = 1,
 ):
     async def run():
-        results = await session.execute(stmt)
-        result = results.first()
-        if not result:
-            logger.warning(f"No task for Select: {stmt}")
-            return
-        task: TaskMd | None = result[0]
-        if not task:
-            logger.warning(f"No task for Select: {stmt}")
-            return
-        while True:
+        query = text(
+            f"SELECT * FROM public.avt_task where task_type = {DETECT_TASK_TYPE} and id = {task_id}"
+        )
+        session = db_session
+        if not session:
+            session = AsyncSessionFactory()
+
+        try:
+            results = await session.execute(query)
+            result = results.first()
+            if not result:
+                logger.warning(f"No task for Select: {task_id}")
+                return
+            task: TaskMd | None = result
+            if not task:
+                logger.warning(f"No task for Select: {task_id}")
+                return
             task_stat = task.task_stat
-            if task_stat is None:
+            if task_stat is None or task_stat < 0:
                 task_stat = start
-            task.task_stat = task_stat + step
-            await asyncio.sleep(step)
-            await session.commit()
-            yield
+            while True:
+                task_stat = task_stat + step
+                await asyncio.sleep(step)
+                await session.execute(
+                    f"update public.avt_task set task_stat = {task_stat} where task_type = {DETECT_TASK_TYPE} and id = {task_id}"
+                )
+                # await session.commit()
+                yield
+        except Exception as e:
+            logger.error(e)
+        # finally:
+        #     # await session.commit()
+        #     await session.close()
 
     return run
 
@@ -79,7 +101,7 @@ async def async_main():
         stmt = (
             select(TaskMd)
             # .where(TaskMd.id == task_id)
-            .where(TaskMd.task_type == 5)  # task type of ship detection
+            .where(TaskMd.task_type == DETECT_TASK_TYPE)  # task type of ship detection
             .where(TaskMd.task_stat < 0)
             .order_by(TaskMd.task_stat.desc())
         )
@@ -91,20 +113,18 @@ async def async_main():
         db_thread: DbThread = None
         try:
             for i, t in enumerate(tasks):
-                if db_thread and db_thread.is_alive():
+                if db_thread:
                     db_thread.stop()
                     db_thread.join()
                 db_thread = DbThread(
                     AsyncSessionFactory,
-                    lambda sess: update_task_chronologically(
-                        select(TaskMd).where(TaskMd.id == t.id), sess
-                    ),
+                    lambda sess: update_task_chronologically(t.id),
                 )
                 db_thread.start()
 
-                await asyncio.sleep(15)
+                await asyncio.sleep(5)
                 current_task = t
-                t.task_stat = 2  # task is checked
+                # t.task_stat = 2  # task is checked in db_thread
                 t.task_message = "Task is being processed"
                 t.process_id = os.getpid()
                 await session.commit()
@@ -260,7 +280,7 @@ async def async_main():
                 session,
             )
         finally:
-            if db_thread and db_thread.is_alive():
+            if db_thread:
                 db_thread.stop()
                 db_thread.join()
             await session.commit()
