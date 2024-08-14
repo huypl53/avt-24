@@ -44,7 +44,7 @@ class DetectShipParam(BaseModel):
     patch_steps: List[int] = [824]
     img_ratios: List[float] = [1.0]
     merge_iou_thr: float = 0.1
-    out_dir: str = "/data/RASTER_PREPR/output_ship_detect/"
+    out_dir: str = "/data/DETECTOR_OUTPUT/"
 
 
 class ExtractedShip(BaseModel):
