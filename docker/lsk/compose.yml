@@ -2,10 +2,12 @@ version: "3.8"
 
 services:
   lsknet_service:
-    build: .
+    build:
+      context: ../../
+      dockerfile: docker/lsk/Dockerfile
     container_name: avt_detection
     volumes:
-      - ./:/workspace/avt-detection
+      - ../../:/workspace/avt-detection
     environment:
       - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
     deploy:
@@ -17,4 +19,5 @@ services:
               capabilities: [gpu]
 
     working_dir: /workspace/avt-detection
-    command: bash -c "mkdir -p ./tmp/ && python cli_lsk.py"
+    command: conda run -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py"
+    # command: bash -c "tail -f /dev/null"
