@@ -1,6 +1,6 @@
 #!/bin/bash
 
-cd './lsknet/' # previously clone at https://github.com/huypl53/LSKNet/ 
+cd './LSKNet/' # previously clone at https://github.com/huypl53/LSKNet/ 
 pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
 # pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cu118
 pip install openmim

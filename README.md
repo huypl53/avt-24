@@ -26,10 +26,10 @@ cp ./dist/enhancing ~/bin/
 
 ## LSK inference
 
-- First make sure that lsknet was clone into current directory by name 'lsknet'
+- First make sure that LSKNet was clone into current directory by name 'LSKNet'
 
 ```bash
-git clone -q https://github.com/huypl53/LSKNet/ lsknet
+git clone -q https://github.com/huypl53/LSKNet/ LSKNet
 ```
 
 - Install dependencies

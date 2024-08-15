@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  lsknet_service:
+    build: .
+    container_name: avt_detection
+    volumes:
+      - ./:/workspace/avt-detection
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    working_dir: /workspace/avt-detection
+    command: bash -c "mkdir -p ./tmp/ && python cli_lsk.py"

@@ -121,15 +121,6 @@ async def async_main():
         stop_event: multiprocessing.synchronize.Event = None
         try:
             for i, t in enumerate(tasks):
-                # if db_thread:
-                #     db_thread.stop()
-                #     db_thread.join()
-                # db_thread = DbProcess(
-                #     AsyncSessionFactory,
-                #     lambda sess: update_task_chronologically(t.id),
-                # )
-                # db_thread.start()
-
                 if update_process:
                     update_process.terminate()
                     update_process.join()
@@ -318,7 +309,7 @@ async def async_main():
 
 
 # Run this from outter directory
-# python ./lsknet/huge_images_extract.py --dir ./images  --config './lsknet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py' --checkpoint './epoch_3_050324.pth' --score-thr 0.5 --save-dir /tmp/ships/
+# python ./LSKNet/huge_images_extract.py --dir ./images  --config './LSKNet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py' --checkpoint './epoch_3_050324.pth' --score-thr 0.5 --save-dir /tmp/ships/
 
 if __name__ == "__main__":
     # cli_main()
