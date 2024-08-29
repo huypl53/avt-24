@@ -9,7 +9,7 @@ COPY ../../ /workspace/avt-detection/
 
 # TODO: check out commit at mmrotate
 RUN <<EOF
-    apt-get update --fix-missing && apt-get install -y wget vim git zip unzip build-essential libgl1-mesa-dev ffmpeg libsm6 libxext6
+    apt-get update --fix-missing && apt-get install -y wget vim git zip unzip build-essential libgl1-mesa-dev ffmpeg libsm6 libxext6 gdal-bin
     conda update conda -y
     conda init bash
     conda create -n avt-detection python=3.10 -y
