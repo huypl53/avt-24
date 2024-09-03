@@ -20,6 +20,7 @@ class Management(BaseModel):
     task_eta: int
     task_output: str  # JSON of model's results
     task_message: str
+    task_id_ref: int
 
 
 class EnhancementParam(BaseModel):

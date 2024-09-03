@@ -114,6 +114,17 @@ async def async_main():
         results = await session.execute(stmt)
         mapping_results = results.mappings().all()
         tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
+        if not tasks or len(tasks) < 1:
+            stmt = (
+                select(TaskMd)
+                .where(TaskMd.task_type == DETECT_TASK_TYPE)  # task type of ship detection
+                .where(TaskMd.task_stat < 0)
+                .where(TaskMd.task_id_ref == 0)
+                .order_by(TaskMd.task_stat.desc())
+            )
+            results = await session.execute(stmt)
+            mapping_results = results.mappings().all()
+            tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
 
         print("----------")
         # db_thread: DbProcess = None

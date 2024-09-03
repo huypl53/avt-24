@@ -67,3 +67,4 @@ class TaskMd(BaseMd):
     created_at: Mapped[str] = mapped_column(String)
     updated_at: Mapped[str] = mapped_column(String)
     user_id: Mapped[int] = mapped_column(Integer)
+    task_id_ref: Mapped[int]=mapped_column(Integer)
