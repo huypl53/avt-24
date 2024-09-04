@@ -19,5 +19,6 @@ services:
               capabilities: [gpu]
 
     working_dir: /workspace/avt-detection
-    command: conda run -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py"
+    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py"
+    # command: conda run -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py  > /dev/tty 2>&1"
     # command: bash -c "tail -f /dev/null"
