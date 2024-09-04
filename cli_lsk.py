@@ -89,6 +89,13 @@ def update_task_chronologically(
     asyncio.run(run())
 
 
+async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
+    results = await session.execute(stmt)
+    mapping_results = results.mappings().all()
+    tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
+    return tasks
+
+
 async def async_main():
     # assert len(sys.argv) < 2
     # task_id = int(sys.argv[1])
@@ -104,55 +111,61 @@ async def async_main():
         # counter += 1
         a_session = anext(get_db())
         session = await a_session
-        stmt = (
+        stmt_task = (
             select(TaskMd)
             # .where(TaskMd.id == task_id)
             .where(TaskMd.task_type == DETECT_TASK_TYPE)  # task type of ship detection
             .where(TaskMd.task_stat < 0)
             .order_by(TaskMd.task_stat.desc())
         )
-        results = await session.execute(stmt)
-        mapping_results = results.mappings().all()
-        tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
-        if not tasks or len(tasks) < 1:
-            stmt = (
-                select(TaskMd)
-                .where(TaskMd.task_type == DETECT_TASK_TYPE)  # task type of ship detection
-                .where(TaskMd.task_stat < 0)
-                .where(TaskMd.task_id_ref == 0)
-                .order_by(TaskMd.task_stat.desc())
-            )
-            results = await session.execute(stmt)
-            mapping_results = results.mappings().all()
-            tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
+        tasks = await query_tasks_by_stmt(stmt_task, session)
 
         print("----------")
         # db_thread: DbProcess = None
         update_process: multiprocessing.Process = None
         stop_event: multiprocessing.synchronize.Event = None
+
+        def update_process_func(t: TaskMd):
+            global update_process, stop_event
+            if update_process:
+                update_process.terminate()
+                update_process.join()
+            if stop_event:
+                stop_event.set()
+
+            stop_event = multiprocessing.Event()
+            update_process = multiprocessing.Process(
+                target=update_task_chronologically, args=([t.id, stop_event])
+            )
+
+            update_process.start()
+
         try:
             for i, t in enumerate(tasks):
-                if update_process:
-                    update_process.terminate()
-                    update_process.join()
-                if stop_event:
-                    stop_event.set()
-
-                stop_event = multiprocessing.Event()
-                update_process = multiprocessing.Process(
-                    target=update_task_chronologically, args=([t.id, stop_event])
-                )
-
-                update_process.start()
-
+                if t.task_id_ref != 0:
+                    # t has to wait to task with id = t.task_id_ref
+                    stmt_ref_tasks = (
+                        select(TaskMd)
+                        .where(
+                            TaskMd.id == t.task_id_ref
+                        )  # task type of ship detection
+                        .where(TaskMd.task_stat == 1)
+                        .order_by(TaskMd.task_stat.desc())
+                    )
+                    tasks = await query_tasks_by_stmt(stmt_ref_tasks, session)
+                    if len(tasks) == 0:
+                        t.task_message = "Waiting for task id = {}".format(
+                            t.task_id_ref
+                        )
+                        await session.commit()
+                        continue
+                    pass
+                update_process_func(t)
                 current_task = t
-                # t.task_stat = 2  # task is checked in db_thread
                 t.task_message = "Task is being processed"
                 t.process_id = os.getpid()
                 await session.commit()
 
-                # if i == 1:
-                #     break  # update only one
                 param_dict = json.loads(t.task_param)
                 if "input_file" not in param_dict:
                     await update_failed_task(
