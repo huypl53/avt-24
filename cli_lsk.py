@@ -126,7 +126,7 @@ async def async_main():
         stop_event: multiprocessing.synchronize.Event = None
 
         def update_process_func(t: TaskMd):
-            global update_process, stop_event
+            nonlocal update_process, stop_event
             if update_process:
                 update_process.terminate()
                 update_process.join()
@@ -142,7 +142,7 @@ async def async_main():
 
         try:
             for i, t in enumerate(tasks):
-                if t.task_id_ref != 0:
+                if t.task_id_ref and t.task_id_ref != 0:
                     # t has to wait to task with id = t.task_id_ref
                     stmt_ref_tasks = (
                         select(TaskMd)
