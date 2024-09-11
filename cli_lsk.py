@@ -18,7 +18,7 @@ from app.db.connector import AsyncSessionFactory, get_db
 
 # from app.db.spawn import DbProcess
 from app.model.task import TaskMd
-from app.schema import DetectShipParam, ExtractedShip
+from app.schema import DetectShipInputParam, DetectShipParam, ExtractedShip
 from app.service.binio import (
     ftpTransfer,
     read_ftp_bin_image,
@@ -32,9 +32,7 @@ from utils.raster import latlong2meter, pixel_point_to_lat_long
 DETECT_TASK_TYPE = 5
 
 
-async def update_failed_task(
-    t: TaskMd, msg: str, session: AsyncSession, task_stat: int = 0
-):
+async def _update_task(t: TaskMd, msg: str, session: AsyncSession, task_stat: int = 0):
 
     t.task_stat = task_stat
     t.task_message = msg
@@ -100,12 +98,14 @@ async def async_main():
     # assert len(sys.argv) < 2
     # task_id = int(sys.argv[1])
 
-    params: DetectShipParam = {}
+    input_params: DetectShipParam = {}
     model = None
     current_task = None
     reload_model = False
+    tmp_im_path = ""
+    im: np.ndarray = None
 
-    pre_conf = DetectShipParam(input_file="").model_dump()
+    pre_param_conf = DetectShipParam()  # .model_dump()
     # counter = 0
     while True:
         # counter += 1
@@ -125,7 +125,7 @@ async def async_main():
         update_process: multiprocessing.Process = None
         stop_event: multiprocessing.synchronize.Event = None
 
-        def update_process_func(t: TaskMd):
+        def _update_process_func(t: TaskMd):
             nonlocal update_process, stop_event
             if update_process:
                 update_process.terminate()
@@ -139,6 +139,66 @@ async def async_main():
             )
 
             update_process.start()
+
+        def _update_param(input_param_dict: Dict):
+            nonlocal input_params, pre_param_conf, reload_model, model
+            input_param_no_file_dict = (
+                {k: v for k, v in input_param_dict.items() if k != "input_file"},
+            )
+            new_params_cnt = len(
+                list(
+                    diff(
+                        input_param_no_file_dict,
+                        dict(pre_param_conf),
+                    )
+                )
+            )
+            if new_params_cnt:
+                reload_model = True
+                # pre_conf.update(param_dict)
+                pre_param_conf = pre_param_conf.update(input_param_dict)
+                input_params = DetectShipInputParam.model_validate(
+                    {
+                        **pre_param_conf.dict(),
+                        "input_file": input_param_dict["input_file"],
+                    }
+                )
+            if reload_model:
+                model = init_detector(
+                    input_params.config,
+                    input_params.checkpoint,
+                    device=input_params.device,
+                )
+                reload_model = False
+
+        async def _update_task(msg: str, stat: 0):
+            nonlocal session, current_task
+            await _update_task(current_task, msg, session, stat)
+
+        async def _infer_image_params(
+            input_params: DetectShipParam,
+        ) -> Tuple[np.ndarray | None, bool]:
+            nonlocal current_task, model, tmp_im_path, im
+            bin_im = read_ftp_bin_image(input_params.input_file)
+            if not bin_im:
+                await _update_task(f"Read image failed at {input_params.input_file}")
+                return None, False
+            tmp_im_path = f"./tmp/{bname}.tif"
+            open(tmp_im_path, "wb").write(bin_im)
+
+            image = np.asarray(bytearray(bin_im), dtype="uint8")
+            im = cv2.imdecode(image, cv2.IMREAD_COLOR)
+
+            result = inference_detector_by_patches(
+                model,
+                im,
+                input_params.patch_sizes,
+                input_params.patch_steps,
+                input_params.img_ratios,
+                input_params.merge_iou_thr,
+            )  # inference for batch
+
+            return result, True
 
         try:
             for i, t in enumerate(tasks):
@@ -160,62 +220,35 @@ async def async_main():
                         await session.commit()
                         continue
                     pass
-                update_process_func(t)
+                _update_process_func(t)
                 current_task = t
                 t.task_message = "Task is being processed"
                 t.process_id = os.getpid()
                 await session.commit()
 
-                param_dict = json.loads(t.task_param)
-                if "input_file" not in param_dict:
-                    await update_failed_task(
-                        t, "<input_file> field is requried!", session
-                    )
+                input_param_dict = json.loads(t.task_param)
+                if "input_file" not in input_param_dict:
+                    await _update_task("<input_file> field is requried!")
                     continue
-                new_params_cnt = len(list(diff(param_dict, dict(params))))
-                if new_params_cnt:
-                    reload_model = True
-                    pre_conf.update(param_dict)
-                    params = DetectShipParam(**pre_conf)
 
-                if reload_model:
-                    model = init_detector(
-                        params.config, params.checkpoint, device=params.device
-                    )
-                    reload_model = False
+                _update_param(input_param_dict)
 
-                t.task_param = json.dumps(params.model_dump())
+                t.task_param = json.dumps(input_params.model_dump())
                 await session.commit()
 
-                bin_im = read_ftp_bin_image(params.input_file)
-                if not bin_im:
-                    await update_failed_task(
-                        t, f"Read image failed at {params.input_file}", session
-                    )
+                result, success = _infer_image_params(input_params)
+                if not success:
                     continue
-                image = np.asarray(bytearray(bin_im), dtype="uint8")
-                im = cv2.imdecode(image, cv2.IMREAD_COLOR)
-
-                result = inference_detector_by_patches(
-                    model,
-                    im,
-                    params.patch_sizes,
-                    params.patch_steps,
-                    params.img_ratios,
-                    params.merge_iou_thr,
-                )  # inference for batch
                 if not len(result):
-                    await update_failed_task(t, "No detection", session, 1)
+                    await _update_task("No detection", 1)
                     continue
                 output = np.array(result[0])  # take first list of boxes from batch
 
                 # TODO: handle score thresh
-                output = output[output[..., -1] > params.score_thr]
+                output = output[output[..., -1] > input_params.score_thr]
 
                 if not len(output):
-                    await update_failed_task(
-                        t, "No detection reachs score thresh", session, 1
-                    )
+                    await _update_task("No detection reachs score thresh", 1)
                     continue
                 xyxyxyxy = xywhr2xyxyxyxy(output)
                 output[..., 4] = np.degrees(output[..., 4])
@@ -239,10 +272,8 @@ async def async_main():
                 xyxyxyxy = xyxyxyxy[valid_idx]
                 flat_xy = xyxyxyxy.reshape(-1, 2)
 
-                bname = os.path.basename(params.input_file).rsplit(".", 1)[0]
-                tmp_im_path = f"./tmp/{bname}.tif"
-                open(tmp_im_path, "wb").write(bin_im)
-                save_dir = os.path.join(params.out_dir, bname)
+                bname = os.path.basename(input_params.input_file).rsplit(".", 1)[0]
+                save_dir = os.path.join(input_params.out_dir, bname)
                 ftpTransfer.mkdir(save_dir)
 
                 # Convert angles to `Bearings maths`
@@ -256,7 +287,7 @@ async def async_main():
                         tmp_im_path, output[..., 0:2]
                     )
                 except:
-                    await update_failed_task(t, "Read crs from image failed!", session)
+                    await _update_task("Read crs from image failed!")
                     continue
 
                 latlong_xy = pixel_point_to_lat_long(tmp_im_path, flat_xy)
@@ -311,10 +342,8 @@ async def async_main():
 
         except Exception as e:
             if current_task:
-                await update_failed_task(
-                    current_task,
+                await _update_task(
                     str(e),
-                    session,
                 )
         finally:
             # if db_thread:

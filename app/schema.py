@@ -34,7 +34,6 @@ class EnhancementOutput(BaseModel):
 
 
 class DetectShipParam(BaseModel):
-    input_file: str
     algorithm: str = "phat_hien_tau"
     config: str = "./LSKNet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py"
     checkpoint: str = "./epoch_3_050324.pth"
@@ -46,6 +45,10 @@ class DetectShipParam(BaseModel):
     img_ratios: List[float] = [1.0]
     merge_iou_thr: float = 0.1
     out_dir: str = "/data/DETECTOR_OUTPUT/"
+
+
+class DetectShipInputParam(DetectShipParam):
+    input_file: str
 
 
 class ExtractedShip(BaseModel):
