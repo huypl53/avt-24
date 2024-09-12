@@ -3,6 +3,7 @@ import json
 import multiprocessing
 import multiprocessing.synchronize
 import os
+import traceback
 from typing import Dict, List, Tuple
 
 import cv2
@@ -81,6 +82,7 @@ def update_task_chronologically(
                 await asyncio.sleep(step)
         except Exception as e:
             logger.error(e)
+            logger.error(traceback.format_exc())
         finally:
             # await session.commit()
             await session.close()
@@ -106,7 +108,8 @@ async def async_main():
     reload_model = False
     tmp_im_path = ""
     im: np.ndarray = None
-
+    bname: str = ""
+    save_dir: str = ""
     pre_param_conf = DetectShipParam()  # .model_dump()
     # counter = 0
     while True:
@@ -156,12 +159,15 @@ async def async_main():
                 )
             )
             if new_params_cnt:
+                logger.info(
+                    f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}"
+                )
                 reload_model = True
                 # pre_conf.update(param_dict)
-                pre_param_conf = pre_param_conf.update(input_param_dict)
+                pre_param_conf = pre_param_conf.model_validate(input_param_dict)
                 input_params = DetectShipInputParam.model_validate(
                     {
-                        **pre_param_conf.dict(),
+                        **pre_param_conf.model_dump(),
                         "input_file": input_param_dict["input_file"],
                     }
                 )
@@ -173,23 +179,34 @@ async def async_main():
                 )
                 reload_model = False
 
-        async def _update_task(msg: str, stat: 0):
-            nonlocal session, current_task
-            await update_task_info(current_task, msg, session, stat)
+        async def _process_image():
+            nonlocal bname, save_dir, im, tmp_im_path, input_params
+            bname = os.path.basename(input_params.input_file).rsplit(".", 1)[0]
+            save_dir = os.path.join(input_params.out_dir, bname)
+            ftpTransfer.mkdir(save_dir)
 
-        async def _infer_image_params(
-            input_params: DetectShipParam,
-        ) -> Tuple[np.ndarray | None, bool]:
-            nonlocal current_task, model, tmp_im_path, im
-            bin_im = read_ftp_bin_image(input_params.input_file)
-            if not bin_im:
-                await _update_task(f"Read image failed at {input_params.input_file}")
+            try:
+                bin_im = read_ftp_bin_image(input_params.input_file)
+                if not bin_im:
+                    await _update_task(
+                        f"Read image failed at {input_params.input_file}"
+                    )
+                    return None, False
+            except:
                 return None, False
             tmp_im_path = f"./tmp/{bname}.tif"
             open(tmp_im_path, "wb").write(bin_im)
 
             image = np.asarray(bytearray(bin_im), dtype="uint8")
             im = cv2.imdecode(image, cv2.IMREAD_COLOR)
+            return im, True
+
+        async def _update_task(msg: str, stat: int = 0):
+            nonlocal session, current_task
+            await update_task_info(current_task, msg, session, stat)
+
+        async def _infer_image_params() -> Tuple[np.ndarray | None, bool]:
+            nonlocal current_task, model, tmp_im_path, im, input_params
 
             result = inference_detector_by_patches(
                 model,
@@ -238,7 +255,10 @@ async def async_main():
                 t.task_param = json.dumps(input_params.model_dump())
                 await session.commit()
 
-                result, success = _infer_image_params(input_params)
+                _, success = await _process_image()
+                if not success:
+                    continue
+                result, success = await _infer_image_params()
                 if not success:
                     continue
                 if not len(result):
@@ -273,10 +293,6 @@ async def async_main():
                 output = output[valid_idx]
                 xyxyxyxy = xyxyxyxy[valid_idx]
                 flat_xy = xyxyxyxy.reshape(-1, 2)
-
-                bname = os.path.basename(input_params.input_file).rsplit(".", 1)[0]
-                save_dir = os.path.join(input_params.out_dir, bname)
-                ftpTransfer.mkdir(save_dir)
 
                 # Convert angles to `Bearings maths`
                 output[..., 4] -= 90
