@@ -32,7 +32,9 @@ from utils.raster import latlong2meter, pixel_point_to_lat_long
 DETECT_TASK_TYPE = 5
 
 
-async def _update_task(t: TaskMd, msg: str, session: AsyncSession, task_stat: int = 0):
+async def update_task_info(
+    t: TaskMd, msg: str, session: AsyncSession, task_stat: int = 0
+):
 
     t.task_stat = task_stat
     t.task_message = msg
@@ -173,7 +175,7 @@ async def async_main():
 
         async def _update_task(msg: str, stat: 0):
             nonlocal session, current_task
-            await _update_task(current_task, msg, session, stat)
+            await update_task_info(current_task, msg, session, stat)
 
         async def _infer_image_params(
             input_params: DetectShipParam,
@@ -331,8 +333,6 @@ async def async_main():
                             lb_path=patch_lb_path,
                         ).model_dump()
                     )
-                # TODO: xyxyxyxy to real coordinates
-                # t.task_output = json.dumps(xyxyxyxy.tolist())
                 t.task_output = json.dumps(detect_results)
                 t.task_stat = 1
                 t.task_message = "Successfully"

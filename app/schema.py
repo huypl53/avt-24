@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import List, Optional
 
 from pydantic import BaseModel
@@ -56,3 +57,12 @@ class ExtractedShip(BaseModel):
     path: str
     coords: List[float]
     lb_path: Optional[str]
+
+
+class ObjectCategory(Enum):
+    SHIP = 0
+    AIRPORT = 1
+    AIRPLANE = 2
+    INFRASTRUCTURE = 3
+    ROAD = 4
+    TANK = 5
