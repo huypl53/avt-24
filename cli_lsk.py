@@ -1,8 +1,10 @@
+# from log import logger
 import asyncio
 import json
 import multiprocessing
 import multiprocessing.synchronize
 import os
+import re
 import traceback
 from typing import Dict, List, Tuple
 
@@ -19,18 +21,22 @@ from app.db.connector import AsyncSessionFactory, get_db
 
 # from app.db.spawn import DbProcess
 from app.model.task import TaskMd
-from app.schema import DetectShipInputParam, DetectShipParam, ExtractedShip
+from app.schema import (
+    DETECT_SHIP_TASK_TYPE,
+    DetectionInputParam,
+    DetectionParam,
+    ExtractedShip,
+)
 from app.service.binio import (
     ftpTransfer,
     read_ftp_bin_image,
     write_ftp_image,
     write_text_file,
 )
-from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
 from utils.raster import latlong2meter, pixel_point_to_lat_long
 
-DETECT_TASK_TYPE = 5
+from log import logger
 
 
 async def update_task_info(
@@ -43,6 +49,22 @@ async def update_task_info(
     await session.commit()
 
 
+def parse_param_dict(param_str: str) -> Dict:
+    param = json.loads(param_str)
+    for k, v in param.items():
+        if type(v) != str:
+            continue
+        if re.search(r'^"\[.*\]"$', v):
+            param[k] = v[1:-1]
+    return param
+
+
+def stringify_dict_list(param: Dict):
+    for k, v in param.items():
+        if isinstance(v, list):
+            param[k] = f'"{json.dumps(v)}"'
+
+
 def update_task_chronologically(
     task_id: int,
     stop_event,
@@ -52,7 +74,7 @@ def update_task_chronologically(
 ):
     async def run():
         query = text(
-            f"SELECT * FROM public.avt_task where task_type = {DETECT_TASK_TYPE} and id = {task_id}"
+            f"SELECT * FROM public.avt_task where task_type = {DETECT_SHIP_TASK_TYPE} and id = {task_id}"
         )
         session = db_session
         if not session:
@@ -75,7 +97,7 @@ def update_task_chronologically(
                 task_stat = task_stat + step
                 await session.execute(
                     text(
-                        f"update public.avt_task set task_stat = {task_stat} where task_type = {DETECT_TASK_TYPE} and id = {task_id}"
+                        f"update public.avt_task set task_stat = {task_stat} where task_type = {DETECT_SHIP_TASK_TYPE} and id = {task_id}"
                     )
                 )
                 await session.commit()
@@ -102,7 +124,7 @@ async def async_main():
     # assert len(sys.argv) < 2
     # task_id = int(sys.argv[1])
 
-    input_params: DetectShipParam = {}
+    input_params: DetectionInputParam = {}
     model = None
     current_task = None
     reload_model = False
@@ -110,7 +132,7 @@ async def async_main():
     im: np.ndarray = None
     bname: str = ""
     save_dir: str = ""
-    pre_param_conf = DetectShipParam()  # .model_dump()
+    pre_param_conf = DetectionParam()  # .model_dump()
     # counter = 0
     while True:
         # counter += 1
@@ -119,7 +141,9 @@ async def async_main():
         stmt_task = (
             select(TaskMd)
             # .where(TaskMd.id == task_id)
-            .where(TaskMd.task_type == DETECT_TASK_TYPE)  # task type of ship detection
+            .where(
+                TaskMd.task_type == DETECT_SHIP_TASK_TYPE
+            )  # task type of ship detection
             .where(TaskMd.task_stat < 0)
             .order_by(TaskMd.task_stat.desc())
         )
@@ -148,13 +172,18 @@ async def async_main():
         def _update_param(input_param_dict: Dict):
             nonlocal input_params, pre_param_conf, reload_model, model
             input_param_no_file_dict = (
-                {k: v for k, v in input_param_dict.items() if k != "input_file"},
+                {k: v for k, v in input_param_dict.items() if k != "input_files"},
             )
-            new_params_cnt = len(
-                list(
-                    diff(
-                        input_param_no_file_dict,
-                        dict(pre_param_conf),
+
+            new_params_cnt = (
+                False
+                if len(input_param_no_file_dict.items()) == 0
+                else len(
+                    list(
+                        diff(
+                            input_param_no_file_dict,
+                            dict(pre_param_conf),
+                        )
                     )
                 )
             )
@@ -165,10 +194,10 @@ async def async_main():
                 reload_model = True
                 # pre_conf.update(param_dict)
                 pre_param_conf = pre_param_conf.model_validate(input_param_dict)
-                input_params = DetectShipInputParam.model_validate(
+                input_params = DetectionInputParam.model_validate(
                     {
                         **pre_param_conf.model_dump(),
-                        "input_file": input_param_dict["input_file"],
+                        "input_files": input_param_dict["input_files"],
                     }
                 )
             if reload_model:
@@ -179,18 +208,16 @@ async def async_main():
                 )
                 reload_model = False
 
-        async def _process_image():
+        async def _process_image(input_file: str):
             nonlocal bname, save_dir, im, tmp_im_path, input_params
-            bname = os.path.basename(input_params.input_file).rsplit(".", 1)[0]
+            bname = os.path.basename(input_file).rsplit(".", 1)[0]
             save_dir = os.path.join(input_params.out_dir, bname)
             ftpTransfer.mkdir(save_dir)
 
             try:
-                bin_im = read_ftp_bin_image(input_params.input_file)
+                bin_im = read_ftp_bin_image(input_file)
                 if not bin_im:
-                    await _update_task(
-                        f"Read image failed at {input_params.input_file}"
-                    )
+                    await _update_task(f"Read image failed at {input_file}")
                     return None, False
             except:
                 return None, False
@@ -245,109 +272,119 @@ async def async_main():
                 t.process_id = os.getpid()
                 await session.commit()
 
-                input_param_dict = json.loads(t.task_param)
-                if "input_file" not in input_param_dict:
-                    await _update_task("<input_file> field is requried!")
+                input_param_dict = parse_param_dict(t.task_param)
+                if "input_files" not in input_param_dict:
+                    await _update_task("<input_files> field is requried!")
                     continue
 
                 _update_param(input_param_dict)
 
-                t.task_param = json.dumps(input_params.model_dump())
+                # t.task_param = stringify_dict_list(input_params.model_dump())
+                t.task_param = input_params.model_dump_json()
                 await session.commit()
+                detect_results = []
+                for image_path in input_params.input_files:
+                    image_id = image_path
+                    _, success = await _process_image(image_path)
+                    if not success:
+                        continue
+                    result, success = await _infer_image_params()
+                    if not success:
+                        continue
+                    if not len(result):
+                        await _update_task("No detection", 1)
+                        continue
 
-                _, success = await _process_image()
-                if not success:
-                    continue
-                result, success = await _infer_image_params()
-                if not success:
-                    continue
-                if not len(result):
-                    await _update_task("No detection", 1)
-                    continue
-                output = np.array(result[0])  # take first list of boxes from batch
+                    output = np.array(result[0])  # take first list of boxes from batch
 
-                # TODO: handle score thresh
-                output = output[output[..., -1] > input_params.score_thr]
+                    # TODO: handle score thresh
+                    output = output[output[..., -1] > input_params.score_thr]
 
-                if not len(output):
-                    await _update_task("No detection reachs score thresh", 1)
-                    continue
-                xyxyxyxy = xywhr2xyxyxyxy(output)
-                output[..., 4] = np.degrees(output[..., 4])
-                rbboxes = [
-                    [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
-                    for r in output
-                ]
-
-                # Pick only valid boxes that provide rectangle
-                valid_idx: List[int] = []
-                patches: List[np.ndarray] = []
-                for i, box in enumerate(rbboxes):
-                    patch = crop_rotated_rectangle(
-                        im, box
-                    )  # patch if None if crop failed
-                    if patch is not None:
-                        patches.append(patch)
-                        valid_idx.append(i)
-
-                output = output[valid_idx]
-                xyxyxyxy = xyxyxyxy[valid_idx]
-                flat_xy = xyxyxyxy.reshape(-1, 2)
-
-                # Convert angles to `Bearings maths`
-                output[..., 4] -= 90
-                angles = output[..., 4]
-                output[..., 4][angles > 0] = 360 - angles[angles > 0]
-                output[..., 4][angles < 0] = -angles[angles < 0]
-
-                try:
-                    lat_long_center = pixel_point_to_lat_long(
-                        tmp_im_path, output[..., 0:2]
-                    )
-                except:
-                    await _update_task("Read crs from image failed!")
-                    continue
-
-                latlong_xy = pixel_point_to_lat_long(tmp_im_path, flat_xy)
-                latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4, 2)
-                # lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
-                lat_long_wh = np.array(
-                    [
-                        [
-                            latlong2meter(
-                                row[i][1], row[i][0], row[i + 1][1], row[i + 1][0]
-                            )
-                            for i in range(2)
-                        ]
-                        for row in latlong_xyxyxyxy
+                    if not len(output):
+                        await _update_task("No detection reachs score thresh", 1)
+                        continue
+                    xyxyxyxy = xywhr2xyxyxyxy(output)
+                    output[..., 4] = np.degrees(output[..., 4])
+                    rbboxes = [
+                        [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
+                        for r in output
                     ]
-                )
 
-                # [[lat_c, lon_c, w_meter, h_meter, score, angle_degree],]
-                lat_long_coords = np.concatenate(
-                    (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
-                )
+                    # Pick only valid boxes that provide rectangle
+                    valid_idx: List[int] = []
+                    patches: List[np.ndarray] = []
+                    for i, box in enumerate(rbboxes):
+                        patch = crop_rotated_rectangle(
+                            im, box
+                        )  # patch if None if crop failed
+                        if patch is not None:
+                            patches.append(patch)
+                            valid_idx.append(i)
 
-                detect_results: List[Dict] = []
-                for i, (p, c) in enumerate(zip(patches, lat_long_coords)):
-                    im_id = f"{i:03d}"
-                    path = os.path.join(save_dir, im_id)
-                    patch_lb_path = path + ".txt"
-                    patch_im_path = path + ".png"
-                    # Box xyxyxyxy
-                    # coords = xy.tolist()
+                    output = output[valid_idx]
+                    xyxyxyxy = xyxyxyxy[valid_idx]
+                    flat_xy = xyxyxyxy.reshape(-1, 2)
 
-                    # Box cx, cy, w, h, angle
-                    coords = c.tolist()
-                    write_ftp_image(p, ".png", patch_im_path)
-                    write_text_file(" ".join([str(i) for i in coords]), patch_lb_path)
+                    # Convert angles to `Bearings maths`
+                    output[..., 4] -= 90
+                    angles = output[..., 4]
+                    output[..., 4][angles > 0] = 360 - angles[angles > 0]
+                    output[..., 4][angles < 0] = -angles[angles < 0]
+
+                    try:
+                        lat_long_center = pixel_point_to_lat_long(
+                            tmp_im_path, output[..., 0:2]
+                        )
+                    except:
+                        await _update_task("Read crs from image failed!")
+                        continue
+
+                    latlong_xy = pixel_point_to_lat_long(tmp_im_path, flat_xy)
+                    latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4, 2)
+                    # lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
+                    lat_long_wh = np.array(
+                        [
+                            [
+                                latlong2meter(
+                                    row[i][1], row[i][0], row[i + 1][1], row[i + 1][0]
+                                )
+                                for i in range(2)
+                            ]
+                            for row in latlong_xyxyxyxy
+                        ]
+                    )
+
+                    # [[lat_c, lon_c, w_meter, h_meter, score, angle_degree],]
+                    lat_long_coords = np.concatenate(
+                        (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
+                    )
+
+                    image_detect_results: List[Dict] = []
+                    for i, (p, c) in enumerate(zip(patches, lat_long_coords)):
+                        im_id = f"{i:03d}"
+                        path = os.path.join(save_dir, im_id)
+                        patch_lb_path = path + ".txt"
+                        patch_im_path = path + ".png"
+                        # Box xyxyxyxy
+                        # coords = xy.tolist()
+
+                        # Box cx, cy, w, h, angle
+                        coords = c.tolist()
+                        write_ftp_image(p, ".png", patch_im_path)
+                        write_text_file(
+                            " ".join([str(i) for i in coords]), patch_lb_path
+                        )
+                        image_detect_results.append(
+                            ExtractedShip(
+                                id=im_id,
+                                path=patch_im_path,
+                                coords=coords,
+                                lb_path=patch_lb_path,
+                            ).model_dump()
+                        )
+
                     detect_results.append(
-                        ExtractedShip(
-                            id=im_id,
-                            path=patch_im_path,
-                            coords=coords,
-                            lb_path=patch_lb_path,
-                        ).model_dump()
+                        {"image_id": image_id, "detections": image_detect_results}
                     )
                 t.task_output = json.dumps(detect_results)
                 t.task_stat = 1

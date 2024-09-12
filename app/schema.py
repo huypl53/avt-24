@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
+DETECT_SHIP_TASK_TYPE = 5
+
 
 class Management(BaseModel):
     task_id: int
@@ -34,7 +36,7 @@ class EnhancementOutput(BaseModel):
     output_file: str
 
 
-class DetectShipParam(BaseModel):
+class DetectionParam(BaseModel):
     algorithm: str = "phat_hien_tau"
     config: str = "./LSKNet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py"
     checkpoint: str = "./epoch_3_050324.pth"
@@ -48,8 +50,8 @@ class DetectShipParam(BaseModel):
     out_dir: str = "/data/DETECTOR_OUTPUT/"
 
 
-class DetectShipInputParam(DetectShipParam):
-    input_file: str
+class DetectionInputParam(DetectionParam):
+    input_files: List[str]
 
 
 class ExtractedShip(BaseModel):

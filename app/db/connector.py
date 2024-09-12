@@ -8,7 +8,7 @@ print(f"Connection string: {settings.asyncpg_url.unicode_string()}")
 engine = create_async_engine(
     settings.asyncpg_url.unicode_string(),
     future=True,
-    echo=True,
+    # echo="debug",
 )
 
 # expire_on_commit=False will prevent attributes from being expired
