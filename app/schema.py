@@ -4,6 +4,8 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 DETECT_SHIP_TASK_TYPE = 5
+DETECT_CHANGE_TASK_TYPE = 20
+DETECT_MILITARY_TASK_TYPE = 21
 
 
 class Management(BaseModel):
@@ -36,35 +38,56 @@ class EnhancementOutput(BaseModel):
     output_file: str
 
 
-class DetectionParam(BaseModel):
-    algorithm: str = "phat_hien_tau"
-    config: str = "./LSKNet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py"
-    checkpoint: str = "./epoch_3_050324.pth"
-    device: str = "cuda:0"
-    score_thr: float = 0.3
-
-    patch_sizes: List[int] = [1024]
-    patch_steps: List[int] = [824]
-    img_ratios: List[float] = [1.0]
-    merge_iou_thr: float = 0.1
+class IOParam(BaseModel):
     out_dir: str = "/data/DETECTOR_OUTPUT/"
+
+
+class DetectionParam(IOParam):
+    algorithm: str
+    config: str
+    checkpoint: str
+    device: str
+    score_thr: float
+
+    patch_sizes: List[int]
+    patch_steps: List[int]
+    img_ratios: List[float]
+    merge_iou_thr: float
 
 
 class DetectionInputParam(DetectionParam):
     input_files: List[str]
 
 
-class ExtractedShip(BaseModel):
+class ObjectCategory(Enum):
+    # SHIP = 0
+    # AIRPORT = 1
+    # AIRPLANE = 2
+    # INFRASTRUCTURE = 3
+    # ROAD = 4
+    # TANK = 5
+
+    # Dota dataset
+    PLANE = 0
+    SHIP = 1
+    STORAGE_TANK = 2
+    BASEBALL_DIAMOND = 3
+    TENNIS_COURT = 4
+    BASKETBALL_COURT = 5
+    GROUND_TRACK_FIELD = 6
+    HARBOR = 7
+    BRIDGE = 8
+    LARGE_VEHICLE = 9
+    SMALL_VEHICLE = 10
+    HELICOPTER = 11
+    ROUNDABOUT = 12
+    SOCCER_BALL_FIELD = 13
+    SWIMMING_POOL = 14
+
+
+class ExtractedObject(BaseModel):
     id: str
     path: str
     coords: List[float]
     lb_path: Optional[str]
-
-
-class ObjectCategory(Enum):
-    SHIP = 0
-    AIRPORT = 1
-    AIRPLANE = 2
-    INFRASTRUCTURE = 3
-    ROAD = 4
-    TANK = 5
+    class_id: Optional[ObjectCategory]

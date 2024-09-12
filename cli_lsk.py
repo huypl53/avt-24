@@ -7,6 +7,7 @@ import os
 import re
 import traceback
 from typing import Dict, List, Tuple
+import argparse
 
 import cv2
 import numpy as np
@@ -22,11 +23,14 @@ from app.db.connector import AsyncSessionFactory, get_db
 # from app.db.spawn import DbProcess
 from app.model.task import TaskMd
 from app.schema import (
+    DETECT_CHANGE_TASK_TYPE,
+    DETECT_MILITARY_TASK_TYPE,
     DETECT_SHIP_TASK_TYPE,
     DetectionInputParam,
     DetectionParam,
-    ExtractedShip,
+    ExtractedObject,
 )
+
 from app.service.binio import (
     ftpTransfer,
     read_ftp_bin_image,
@@ -68,13 +72,14 @@ def stringify_dict_list(param: Dict):
 def update_task_chronologically(
     task_id: int,
     stop_event,
+    task_type: int,
     db_session: AsyncSession | None = None,
     start=2,
     step: int = 1,
 ):
     async def run():
         query = text(
-            f"SELECT * FROM public.avt_task where task_type = {DETECT_SHIP_TASK_TYPE} and id = {task_id}"
+            f"SELECT * FROM public.avt_task where task_type = {task_type} and id = {task_id}"
         )
         session = db_session
         if not session:
@@ -97,7 +102,7 @@ def update_task_chronologically(
                 task_stat = task_stat + step
                 await session.execute(
                     text(
-                        f"update public.avt_task set task_stat = {task_stat} where task_type = {DETECT_SHIP_TASK_TYPE} and id = {task_id}"
+                        f"update public.avt_task set task_stat = {task_stat} where task_type = {task_type} and id = {task_id}"
                     )
                 )
                 await session.commit()
@@ -120,7 +125,7 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     return tasks
 
 
-async def async_main():
+async def async_main(task_type: int):
     # assert len(sys.argv) < 2
     # task_id = int(sys.argv[1])
 
@@ -141,9 +146,7 @@ async def async_main():
         stmt_task = (
             select(TaskMd)
             # .where(TaskMd.id == task_id)
-            .where(
-                TaskMd.task_type == DETECT_SHIP_TASK_TYPE
-            )  # task type of ship detection
+            .where(TaskMd.task_type == task_type)  # task type of ship detection
             .where(TaskMd.task_stat < 0)
             .order_by(TaskMd.task_stat.desc())
         )
@@ -164,7 +167,7 @@ async def async_main():
 
             stop_event = multiprocessing.Event()
             update_process = multiprocessing.Process(
-                target=update_task_chronologically, args=([t.id, stop_event])
+                target=update_task_chronologically, args=([t.id, stop_event, task_type])
             )
 
             update_process.start()
@@ -375,7 +378,7 @@ async def async_main():
                             " ".join([str(i) for i in coords]), patch_lb_path
                         )
                         image_detect_results.append(
-                            ExtractedShip(
+                            ExtractedObject(
                                 id=im_id,
                                 path=patch_im_path,
                                 coords=coords,
@@ -418,5 +421,19 @@ async def async_main():
 # python ./LSKNet/huge_images_extract.py --dir ./images  --config './LSKNet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py' --checkpoint './epoch_3_050324.pth' --score-thr 0.5 --save-dir /tmp/ships/
 
 if __name__ == "__main__":
-    # cli_main()
-    asyncio.run(async_main())
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--task_type",
+        type=int,
+        choices=[
+            DETECT_SHIP_TASK_TYPE,
+            DETECT_CHANGE_TASK_TYPE,
+            DETECT_MILITARY_TASK_TYPE,
+        ],
+        required=True,
+        help="Task type",
+    )
+    args, _ = parser.parse_known_args()
+    asyncio.run(async_main(args.task_type))
