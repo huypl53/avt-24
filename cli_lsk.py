@@ -17,7 +17,7 @@ from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from pydantic_yaml import parse_yaml_raw_as
 from app.db.connector import AsyncSessionFactory, get_db
 
 # from app.db.spawn import DbProcess
@@ -124,6 +124,17 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
     return tasks
 
+def load_task_config(task_type: int):
+    match task_type:
+        case taks_type == DETECT_SHIP_TASK_TYPE:
+            return DETECT_SHIP_TASK_TYPE
+        case DETECT_CHANGE_TASK_TYPE:
+            return DETECT_CHANGE_TASK_TYPE
+        case DETECT_MILITARY_TASK_TYPE:
+            return DETECT_MILITARY_TASK_TYPE
+        case _:
+            return None
+
 
 async def async_main(task_type: int):
     # assert len(sys.argv) < 2
@@ -154,8 +165,8 @@ async def async_main(task_type: int):
 
         print("----------")
         # db_thread: DbProcess = None
-        update_process: multiprocessing.Process = None
-        stop_event: multiprocessing.synchronize.Event = None
+        update_process: multiprocessing.Process | None = None
+        stop_event: multiprocessing.synchronize.Event | None = None
 
         def _update_process_func(t: TaskMd):
             nonlocal update_process, stop_event

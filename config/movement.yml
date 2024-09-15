@@ -1,0 +1,13 @@
+---
+algorithm: phat_hien_tau
+config: ./LSKNet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py
+checkpoint: ./epoch_3_050324.pth
+device: cuda:0
+score_thr: 0.3
+patch_sizes:
+  - 1024
+patch_steps:
+  - 824
+img_ratios:
+  - 1
+merge_iou_thr: 0.1

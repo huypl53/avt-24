@@ -35,7 +35,8 @@ RUN <<EOF
     pip install timm==0.6.13 future tensorboard
 
     cd  /workspace/avt-detection/
-    pip install -r requirements.txt
+    pip install -r requirements/lsk.txt
+    pip install -r requirements/app.txt
     cd ./LSKNet && pip install -v -e .
     pip cache purge
     conda clean --all -y
