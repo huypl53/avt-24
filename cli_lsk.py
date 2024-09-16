@@ -309,7 +309,7 @@ async def async_main(task_type: DetectionTaskType):
                     result, success = await _infer_image_params()
                     if not success:
                         continue
-                    if not len(result):
+                    if result is None or  not len(result):
                         await _update_task("No detection", 1)
                         continue
 
@@ -323,7 +323,7 @@ async def async_main(task_type: DetectionTaskType):
                         await _update_task("No detection reachs score thresh", 1)
                         continue
                     xyxyxyxy = xywhr2xyxyxyxy(output)
-                    output[..., 4] = np.deg:warees(output[..., 4])
+                    output[..., 4] = np.degrees(output[..., 4])
                     rbboxes = [
                         [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
                         for r in output
