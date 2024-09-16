@@ -3,4 +3,4 @@
 cd $(dirname $(dirname $0) )
 conda activate openmmlab
 mkdir -p ./tmp/
-python cli_lsk.py
+python cli_lsk.py --task_type ship

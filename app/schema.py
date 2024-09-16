@@ -95,4 +95,4 @@ class ExtractedObject(BaseModel):
     path: str
     coords: List[float]
     lb_path: Optional[str]
-    class_id: Optional[ObjectCategory]
+    class_id: Optional[ObjectCategory] = None
