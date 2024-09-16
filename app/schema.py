@@ -3,9 +3,14 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
-DETECT_SHIP_TASK_TYPE = 5
-DETECT_CHANGE_TASK_TYPE = 20
-DETECT_MILITARY_TASK_TYPE = 21
+
+class DetectionTaskType(Enum):
+    ship = 5
+    change = 20
+    military = 21
+
+    def __str__(self) -> str:
+        return f"{self.value} for {self.name}"
 
 
 class Management(BaseModel):

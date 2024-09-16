@@ -17,17 +17,14 @@ from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic_yaml import parse_yaml_raw_as
 from app.db.connector import AsyncSessionFactory, get_db
 
 # from app.db.spawn import DbProcess
 from app.model.task import TaskMd
 from app.schema import (
-    DETECT_CHANGE_TASK_TYPE,
-    DETECT_MILITARY_TASK_TYPE,
-    DETECT_SHIP_TASK_TYPE,
     DetectionInputParam,
     DetectionParam,
+    DetectionTaskType,
     ExtractedObject,
 )
 
@@ -124,14 +121,18 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     tasks: List[TaskMd] = [m["TaskMd"] for m in mapping_results]
     return tasks
 
-def load_task_config(task_type: int):
+
+def load_task_config(task_type: int) -> DetectionParam | None:
     match task_type:
-        case taks_type == DETECT_SHIP_TASK_TYPE:
-            return DETECT_SHIP_TASK_TYPE
-        case DETECT_CHANGE_TASK_TYPE:
-            return DETECT_CHANGE_TASK_TYPE
-        case DETECT_MILITARY_TASK_TYPE:
-            return DETECT_MILITARY_TASK_TYPE
+        case DetectionTaskType.SHIP:
+            config = open("./config/ship.json", "r").read()
+            return DetectionParam.model_validate_json(config)
+        case DetectionTaskType.CHANGE:
+            config = open("./config/change.json", "r").read()
+            return DetectionParam.model_validate_json(config)
+        case DetectionTaskType.MILITARY:
+            config = open("./config/military.json", "r").read()
+            return DetectionParam.model_validate_json(config)
         case _:
             return None
 
@@ -140,7 +141,6 @@ async def async_main(task_type: int):
     # assert len(sys.argv) < 2
     # task_id = int(sys.argv[1])
 
-    input_params: DetectionInputParam = {}
     model = None
     current_task = None
     reload_model = False
@@ -148,7 +148,10 @@ async def async_main(task_type: int):
     im: np.ndarray = None
     bname: str = ""
     save_dir: str = ""
-    pre_param_conf = DetectionParam()  # .model_dump()
+    pre_param_conf = load_task_config(task_type)
+    input_params: DetectionInputParam = DetectionInputParam.model_validate(
+        pre_param_conf
+    )
     # counter = 0
     while True:
         # counter += 1
@@ -185,9 +188,9 @@ async def async_main(task_type: int):
 
         def _update_param(input_param_dict: Dict):
             nonlocal input_params, pre_param_conf, reload_model, model
-            input_param_no_file_dict = (
-                {k: v for k, v in input_param_dict.items() if k != "input_files"},
-            )
+            input_param_no_file_dict = {
+                k: v for k, v in input_param_dict.items() if k != "input_files"
+            }
 
             new_params_cnt = (
                 False
@@ -207,7 +210,7 @@ async def async_main(task_type: int):
                 )
                 reload_model = True
                 # pre_conf.update(param_dict)
-                pre_param_conf = pre_param_conf.model_validate(input_param_dict)
+                pre_param_conf = DetectionParam.model_validate(input_param_dict)
                 input_params = DetectionInputParam.model_validate(
                     {
                         **pre_param_conf.model_dump(),
@@ -233,7 +236,7 @@ async def async_main(task_type: int):
                 if not bin_im:
                     await _update_task(f"Read image failed at {input_file}")
                     return None, False
-            except:
+            except Exception:
                 return None, False
             tmp_im_path = f"./tmp/{bname}.tif"
             open(tmp_im_path, "wb").write(bin_im)
@@ -432,17 +435,12 @@ async def async_main(task_type: int):
 # python ./LSKNet/huge_images_extract.py --dir ./images  --config './LSKNet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py' --checkpoint './epoch_3_050324.pth' --score-thr 0.5 --save-dir /tmp/ships/
 
 if __name__ == "__main__":
-    import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--task_type",
         type=int,
-        choices=[
-            DETECT_SHIP_TASK_TYPE,
-            DETECT_CHANGE_TASK_TYPE,
-            DETECT_MILITARY_TASK_TYPE,
-        ],
+        choices=list([DetectionTaskType]),
         required=True,
         help="Task type",
     )
