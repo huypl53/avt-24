@@ -1,4 +1,4 @@
-# from log import logger
+import argparse
 import asyncio
 import json
 import multiprocessing
@@ -7,7 +7,6 @@ import os
 import re
 import traceback
 from typing import Dict, List, Tuple
-import argparse
 
 import cv2
 import numpy as np
@@ -17,6 +16,7 @@ from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.connector import AsyncSessionFactory, get_db
 
 # from app.db.spawn import DbProcess
@@ -26,18 +26,17 @@ from app.schema import (
     DetectionParam,
     DetectionTaskType,
     ExtractedObject,
+    ObjectCategory,
 )
-
 from app.service.binio import (
     ftpTransfer,
     read_ftp_bin_image,
     write_ftp_image,
     write_text_file,
 )
+from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
 from utils.raster import latlong2meter, pixel_point_to_lat_long
-
-from log import logger
 
 
 async def update_task_info(
@@ -122,22 +121,22 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     return tasks
 
 
-def load_task_config(task_type: int) -> DetectionParam | None:
+def load_task_config(task_type: DetectionTaskType) -> DetectionParam | None:
     match task_type:
-        case DetectionTaskType.SHIP:
+        case DetectionTaskType.ship:
             config = open("./config/ship.json", "r").read()
             return DetectionParam.model_validate_json(config)
-        case DetectionTaskType.CHANGE:
+        case DetectionTaskType.change:
             config = open("./config/change.json", "r").read()
             return DetectionParam.model_validate_json(config)
-        case DetectionTaskType.MILITARY:
+        case DetectionTaskType.military:
             config = open("./config/military.json", "r").read()
             return DetectionParam.model_validate_json(config)
         case _:
             return None
 
 
-async def async_main(task_type: int):
+async def async_main(task_type: DetectionTaskType):
     # assert len(sys.argv) < 2
     # task_id = int(sys.argv[1])
 
@@ -149,8 +148,9 @@ async def async_main(task_type: int):
     bname: str = ""
     save_dir: str = ""
     pre_param_conf = load_task_config(task_type)
-    input_params: DetectionInputParam = DetectionInputParam.model_validate(
-        pre_param_conf
+    input_params: DetectionInputParam = DetectionInputParam(
+        **pre_param_conf.model_dump(),
+        input_files=[""],
     )
     # counter = 0
     while True:
@@ -160,7 +160,7 @@ async def async_main(task_type: int):
         stmt_task = (
             select(TaskMd)
             # .where(TaskMd.id == task_id)
-            .where(TaskMd.task_type == task_type)  # task type of ship detection
+            .where(TaskMd.task_type == task_type.value)  # task type of ship detection
             .where(TaskMd.task_stat < 0)
             .order_by(TaskMd.task_stat.desc())
         )
@@ -181,7 +181,8 @@ async def async_main(task_type: int):
 
             stop_event = multiprocessing.Event()
             update_process = multiprocessing.Process(
-                target=update_task_chronologically, args=([t.id, stop_event, task_type])
+                target=update_task_chronologically,
+                args=([t.id, stop_event, task_type.value]),
             )
 
             update_process.start()
@@ -192,29 +193,28 @@ async def async_main(task_type: int):
                 k: v for k, v in input_param_dict.items() if k != "input_files"
             }
 
-            new_params_cnt = (
-                False
-                if len(input_param_no_file_dict.items()) == 0
-                else len(
-                    list(
-                        diff(
-                            input_param_no_file_dict,
-                            dict(pre_param_conf),
-                        )
+            new_params_cnt = len(
+                list(
+                    diff(
+                        input_param_no_file_dict,
+                        dict(pre_param_conf),
                     )
                 )
             )
-            if new_params_cnt:
+
+            if new_params_cnt or not model:
                 logger.info(
                     f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}"
                 )
                 reload_model = True
                 # pre_conf.update(param_dict)
-                pre_param_conf = DetectionParam.model_validate(input_param_dict)
+                pre_param_conf = pre_param_conf.model_copy(
+                    update=input_param_no_file_dict
+                )
                 input_params = DetectionInputParam.model_validate(
                     {
                         **pre_param_conf.model_dump(),
-                        "input_files": input_param_dict["input_files"],
+                        **input_param_dict,
                     }
                 )
             if reload_model:
@@ -225,7 +225,7 @@ async def async_main(task_type: int):
                 )
                 reload_model = False
 
-        async def _process_image(input_file: str):
+        async def _process_image(input_file: str) -> Tuple[None | np.ndarray, bool]:
             nonlocal bname, save_dir, im, tmp_im_path, input_params
             bname = os.path.basename(input_file).rsplit(".", 1)[0]
             save_dir = os.path.join(input_params.out_dir, bname)
@@ -237,6 +237,7 @@ async def async_main(task_type: int):
                     await _update_task(f"Read image failed at {input_file}")
                     return None, False
             except Exception:
+                await _update_task(f"Read image failed at {input_file}")
                 return None, False
             tmp_im_path = f"./tmp/{bname}.tif"
             open(tmp_im_path, "wb").write(bin_im)
@@ -312,6 +313,7 @@ async def async_main(task_type: int):
                         await _update_task("No detection", 1)
                         continue
 
+                    if task_type == DetectionTaskType.ship
                     output = np.array(result[0])  # take first list of boxes from batch
 
                     # TODO: handle score thresh
@@ -321,7 +323,7 @@ async def async_main(task_type: int):
                         await _update_task("No detection reachs score thresh", 1)
                         continue
                     xyxyxyxy = xywhr2xyxyxyxy(output)
-                    output[..., 4] = np.degrees(output[..., 4])
+                    output[..., 4] = np.deg:warees(output[..., 4])
                     rbboxes = [
                         [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
                         for r in output
@@ -352,7 +354,7 @@ async def async_main(task_type: int):
                         lat_long_center = pixel_point_to_lat_long(
                             tmp_im_path, output[..., 0:2]
                         )
-                    except:
+                    except Exception:
                         await _update_task("Read crs from image failed!")
                         continue
 
@@ -391,12 +393,14 @@ async def async_main(task_type: int):
                         write_text_file(
                             " ".join([str(i) for i in coords]), patch_lb_path
                         )
+
                         image_detect_results.append(
                             ExtractedObject(
                                 id=im_id,
                                 path=patch_im_path,
                                 coords=coords,
                                 lb_path=patch_lb_path,
+                                class_id=ObjectCategory.SHIP,
                             ).model_dump()
                         )
 
@@ -439,8 +443,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--task_type",
-        type=int,
-        choices=list([DetectionTaskType]),
+        type=lambda v: DetectionTaskType[v],
+        choices=list(DetectionTaskType),
         required=True,
         help="Task type",
     )

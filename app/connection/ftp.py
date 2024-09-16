@@ -42,7 +42,7 @@ class _FtpConnector:
             logger.info(f"Download {file_path} successfully!")
             return True
         except Exception as e:
-            logger.error(f"FTP write to {file_path} failed. Error: {e}")
+            logger.error(f"Download {file_path} failed. Error: {e}")
             return False
 
     def mkdir(self, dir_path: str) -> bool:

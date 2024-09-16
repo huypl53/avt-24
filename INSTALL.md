@@ -32,4 +32,4 @@ python demo/huge_image_demo.py demo/dota_demo.jpg configs/redet/redet_re50_refpn
 python demo/huge_image_demo.py demo/dota_demo.jpg configs/roi_trans/roi_trans_r50_fpn_1x_dota_ms_rr_le90.py roi_trans_r50_fpn_1x_dota_ms_rr_le90-fa99496f.pth
 ```
 
-> Label order: plane, ship, storage tank, baseball diamond, tennis court, basketball court, ground track field, harbor, bridge, large vehicle, small vehicle, helicopter, roundabout, soccer ball field and swimming pool.
+> Label order: plane, ship, storage tank, baseball diamond, tennis court, basketball court, ground track field, harbor, bridge, large vehicle, small vehicle, helicopter, roundabout, soccer ball field and swimming pool. Model prediction format has shape batch_size x class_num x [5 for bbox | 6 for oriented bbox]

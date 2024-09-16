@@ -10,7 +10,15 @@ class DetectionTaskType(Enum):
     military = 21
 
     def __str__(self) -> str:
-        return f"{self.value} for {self.name}"
+        # return f"{self.value} for {self.name}"
+        return self.name
+
+    @staticmethod
+    def from_string(s):
+        try:
+            return DetectionTaskType[s]
+        except KeyError as exc:
+            raise ValueError() from exc
 
 
 class Management(BaseModel):
@@ -95,4 +103,4 @@ class ExtractedObject(BaseModel):
     path: str
     coords: List[float]
     lb_path: Optional[str]
-    class_id: Optional[ObjectCategory]
+    class_id: Optional[ObjectCategory.value]
