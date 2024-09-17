@@ -309,11 +309,11 @@ async def async_main(task_type: DetectionTaskType):
                     result, success = await _infer_image_params()
                     if not success:
                         continue
-                    if result is None or  not len(result):
+                    if result is None or not len(result):
                         await _update_task("No detection", 1)
                         continue
 
-                    if task_type == DetectionTaskType.ship
+                    # TODO: hanlde output's shape base on LSKNet or mmrotate
                     output = np.array(result[0])  # take first list of boxes from batch
 
                     # TODO: handle score thresh
@@ -420,9 +420,6 @@ async def async_main(task_type: DetectionTaskType):
                     str(e),
                 )
         finally:
-            # if db_thread:
-            #     db_thread.stop()
-            #     db_thread.join()
             await session.commit()
             if update_process:
                 update_process.terminate()
