@@ -24,17 +24,20 @@ def read_image_corner_coords(im_path: str) -> List[Tuple[float, float]]:
     return result["cornerCoordinates"]
 
 
+def read_tif_meta(im_path: str):
+    r = subprocess.run(["gdalinfo", im_path, "-json"], capture_output=True, text=True)
+    result = json.loads(r.stdout)
+    return result
+
+
 def pixel_point_to_lat_long(
-    im_path: str, points: List[Tuple[float, float]] | np.ndarray
+    points: List[Tuple[float, float]] | np.ndarray, tif_meta
 ) -> List[Tuple[float, float]]:
     """
     points: N points in format of (x, y)
     """
     # 'size': [9982, 5484],  width, height
     # check more at https://gdal.org/programs/gdalinfo.html
-
-    r = subprocess.run(["gdalinfo", im_path, "-json"], capture_output=True, text=True)
-    result = json.loads(r.stdout)
 
     # corners = result["cornerCoordinates"]
     # tl, bl, br, tr = (
@@ -45,9 +48,9 @@ def pixel_point_to_lat_long(
     # )
 
     # decimal degree
-    corners = result["wgs84Extent"]["coordinates"]
+    corners = tif_meta["wgs84Extent"]["coordinates"]
     tl, bl, br, tr = corners[0][:4]
-    w, h = result["size"]
+    w, h = tif_meta["size"]
 
     dxy = [(p[0] / w, p[1] / h) for p in points]
     ll_points: List[Tuple[float, float]] = []

@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 from dictdiffer import diff
+from core import Worker
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
@@ -36,7 +37,7 @@ from app.service.binio import (
 )
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
-from utils.raster import latlong2meter, pixel_point_to_lat_long
+from utils.raster import latlong2meter, pixel_point_to_lat_long, read_tif_meta
 
 
 async def update_task_info(
@@ -265,7 +266,7 @@ async def async_main(task_type: DetectionTaskType):
             return result, True
 
         try:
-            for i, t in enumerate(tasks):
+            for cls_id, t in enumerate(tasks):
                 if t.task_id_ref and t.task_id_ref != 0:
                     # t has to wait to task with id = t.task_id_ref
                     stmt_ref_tasks = (
@@ -313,8 +314,7 @@ async def async_main(task_type: DetectionTaskType):
                         await _update_task("No detection", 1)
                         continue
 
-                    # TODO: hanlde output's shape base on LSKNet or mmrotate
-                    output = np.array(result[0])  # take first list of boxes from batch
+                    # output = np.array(result[0])  # take first list of boxes from batch
 
                     # TODO: handle score thresh
                     output = output[output[..., -1] > input_params.score_thr]
@@ -324,21 +324,33 @@ async def async_main(task_type: DetectionTaskType):
                         continue
                     xyxyxyxy = xywhr2xyxyxyxy(output)
                     output[..., 4] = np.degrees(output[..., 4])
-                    rbboxes = [
-                        [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
-                        for r in output
-                    ]
+
+                    cls_rbboxes = np.array(
+                        [
+                            [
+                                [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
+                                for r in class_row
+                            ]
+                            for class_row in output
+                        ]
+                    )
 
                     # Pick only valid boxes that provide rectangle
-                    valid_idx: List[int] = []
-                    patches: List[np.ndarray] = []
-                    for i, box in enumerate(rbboxes):
-                        patch = crop_rotated_rectangle(
-                            im, box
-                        )  # patch if None if crop failed
-                        if patch is not None:
-                            patches.append(patch)
-                            valid_idx.append(i)
+                    # valid_idx: List[int] = []
+                    # patches: List[np.ndarray] = []
+
+                    valid_idx = np.zeros(cls_rbboxes.shape[:2])
+                    patches = np.zeros_like(valid_idx)
+                    for cls_id, rbboxes in enumerate(cls_rbboxes):
+                        for box_id, box in rbboxes:
+                            patch = crop_rotated_rectangle(
+                                im, box
+                            )  # patch if None if crop failed
+                            if patch is not None:
+                                # patches.append(patch)
+                                # valid_idx.append(cls_id)
+                                patches[cls_id, box_id] = 1
+                                valid_idx[cls_id, box_id] = 1
 
                     output = output[valid_idx]
                     xyxyxyxy = xyxyxyxy[valid_idx]
@@ -351,8 +363,9 @@ async def async_main(task_type: DetectionTaskType):
                     output[..., 4][angles < 0] = -angles[angles < 0]
 
                     try:
+                        tif_meta = read_tif_meta(tmp_im_path)
                         lat_long_center = pixel_point_to_lat_long(
-                            tmp_im_path, output[..., 0:2]
+                            output[..., 0:2], tif_meta
                         )
                     except Exception:
                         await _update_task("Read crs from image failed!")
@@ -379,8 +392,8 @@ async def async_main(task_type: DetectionTaskType):
                     )
 
                     image_detect_results: List[Dict] = []
-                    for i, (p, c) in enumerate(zip(patches, lat_long_coords)):
-                        im_id = f"{i:03d}"
+                    for cls_id, (p, c) in enumerate(zip(patches, lat_long_coords)):
+                        im_id = f"{cls_id:03d}"
                         path = os.path.join(save_dir, im_id)
                         patch_lb_path = path + ".txt"
                         patch_im_path = path + ".png"
@@ -446,4 +459,8 @@ if __name__ == "__main__":
         help="Task type",
     )
     args, _ = parser.parse_known_args()
-    asyncio.run(async_main(args.task_type))
+    # asyncio.run(async_main(args.task_type))
+
+    pre_param_conf = load_task_config(args.task_type)
+    worker = Worker()
+    asyncio.run(worker.start(args.task_type, pre_param_conf))
