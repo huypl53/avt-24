@@ -1,5 +1,5 @@
 {
-  "algorithm": "phat_hien_tau",
+  "algorithm": "phat_hien_thay_doi",
   "config": "./LSKNet/configs/redet/redet_re50_refpn_1x_dota_ms_rr_le90.py",
   "checkpoint": "./redet_re50_fpn_1x_dota_ms_rr_le90-fc9217b5.pth",
   "device": "cuda:0",
