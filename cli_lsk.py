@@ -66,6 +66,16 @@ def stringify_dict_list(param: Dict):
             param[k] = f'"{json.dumps(v)}"'
 
 
+def filter_3d_array(array3d: np.ndarray, filter2d: np.ndarray) -> np.ndarray:
+    output = np.array(
+        [
+            [bbox for bbox, mask in zip(class_boxes, bbox_masks) if mask]
+            for class_boxes, bbox_masks in zip(array3d, filter2d)
+        ]
+    )
+    return output
+
+
 def update_task_chronologically(
     task_id: int,
     stop_event,
@@ -307,17 +317,31 @@ async def async_main(task_type: DetectionTaskType):
                     _, success = await _process_image(image_path)
                     if not success:
                         continue
-                    result, success = await _infer_image_params()
+                    classes_results, success = await _infer_image_params()
                     if not success:
                         continue
-                    if result is None or not len(result):
+                    if classes_results is None or not len(classes_results):
                         await _update_task("No detection", 1)
                         continue
 
                     # output = np.array(result[0])  # take first list of boxes from batch
 
                     # TODO: handle score thresh
-                    output = output[output[..., -1] > input_params.score_thr]
+                    classes_results = np.array(classes_results)
+                    # output = result[:, result[..., -1] > input_params.score_thr]
+                    score_mask = classes_results[..., -1] > input_params.score_thr
+                    output = np.array(
+                        [
+                            [
+                                bbox
+                                for bbox, mask in zip(class_boxes, bbox_masks)
+                                if mask
+                            ]
+                            for class_boxes, bbox_masks in zip(
+                                classes_results, score_mask
+                            )
+                        ]
+                    )
 
                     if not len(output):
                         await _update_task("No detection reachs score thresh", 1)
@@ -325,35 +349,42 @@ async def async_main(task_type: DetectionTaskType):
                     xyxyxyxy = xywhr2xyxyxyxy(output)
                     output[..., 4] = np.degrees(output[..., 4])
 
-                    cls_rbboxes = np.array(
+                    # this is to crop detected patach only
+                    cls_rbboxes = [
                         [
                             [
-                                [(int(r[0]), int(r[1])), (int(r[2]), int(r[3])), r[4]]
-                                for r in class_row
+                                int(box[0]),
+                                int(box[1]),
+                                int(box[2]),
+                                int(box[3]),
+                                box[4],
                             ]
-                            for class_row in output
+                            for box in class_bboxes
                         ]
-                    )
+                        for class_bboxes in output
+                    ]
 
                     # Pick only valid boxes that provide rectangle
                     # valid_idx: List[int] = []
                     # patches: List[np.ndarray] = []
 
-                    valid_idx = np.zeros(cls_rbboxes.shape[:2])
-                    patches = np.zeros_like(valid_idx)
+                    valid_idx = np.zeros(output.shape[:2])
+                    patches = np.zeros_like(valid_idx).tolist()
                     for cls_i, rbboxes in enumerate(cls_rbboxes):
-                        for box_i, box in rbboxes:
+                        for box_i, box in enumerate(rbboxes):
                             patch = crop_rotated_rectangle(
                                 im, box
                             )  # patch if None if crop failed
                             if patch is not None:
                                 # patches.append(patch)
                                 # valid_idx.append(cls_id)
-                                patches[cls_i, box_i] = patch
+                                patches[cls_i][box_i] = patch
                                 valid_idx[cls_i, box_i] = 1
 
-                    output = output[valid_idx]
-                    xyxyxyxy = xyxyxyxy[valid_idx]
+                    # output = output[valid_idx]
+                    output = filter_3d_array(output, valid_idx)
+                    # xyxyxyxy = xyxyxyxy[valid_idx]
+                    xyxyxyxy = filter_3d_array(xyxyxyxy, valid_idx)
                     flat_xy = xyxyxyxy.reshape(-1, 2)
 
                     # Convert angles to `Bearings maths`
@@ -364,9 +395,15 @@ async def async_main(task_type: DetectionTaskType):
 
                     try:
                         tif_meta = read_tif_meta(tmp_im_path)
-                        lat_long_center = pixel_point_to_lat_long(
-                            output[..., 0:2], tif_meta
-                        )
+                        lat_long_center = [
+                            [
+                                pixel_point_to_lat_long(
+                                    np.int64(box[..., 0:2]), tif_meta
+                                )
+                                for box in classes_boxes
+                            ]
+                            for classes_boxes in output
+                        ]
                         lat_long_center = np.array(lat_long_center).reshape(
                             output.shape[:-1], 2
                         )
@@ -391,9 +428,9 @@ async def async_main(task_type: DetectionTaskType):
                                     )
                                     for i in range(2)
                                 ]
-                                for box in class_row
+                                for box in class_bboxes
                             ]
-                            for class_row in latlong_xyxyxyxy
+                            for class_bboxes in latlong_xyxyxyxy
                         ]
                     )
 
@@ -479,8 +516,8 @@ if __name__ == "__main__":
         help="Task type",
     )
     args, _ = parser.parse_known_args()
-    # asyncio.run(async_main(args.task_type))
+    asyncio.run(async_main(args.task_type))
 
-    pre_param_conf = load_task_config(args.task_type)
-    worker = Worker()
-    asyncio.run(worker.start(args.task_type, pre_param_conf))
+    # pre_param_conf = load_task_config(args.task_type)
+    # worker = Worker()
+    # asyncio.run(worker.start(args.task_type, pre_param_conf))
