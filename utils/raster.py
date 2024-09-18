@@ -32,9 +32,11 @@ def read_tif_meta(im_path: str):
 
 def pixel_point_to_lat_long(
     points: List[Tuple[float, float]] | np.ndarray, tif_meta
-) -> List[Tuple[float, float]]:
-    """
+) -> List[List[float]]:
+    """convert list of point(x, y) into lat/long
     points: N points in format of (x, y)
+    Returns:
+        List[ [lat, long] x N]: _description_
     """
     # 'size': [9982, 5484],  width, height
     # check more at https://gdal.org/programs/gdalinfo.html
@@ -53,7 +55,7 @@ def pixel_point_to_lat_long(
     w, h = tif_meta["size"]
 
     dxy = [(p[0] / w, p[1] / h) for p in points]
-    ll_points: List[Tuple[float, float]] = []
+    ll_points: List[List[float]] = []
     for d in dxy:
         dx, dy = d
 
@@ -65,7 +67,7 @@ def pixel_point_to_lat_long(
         lon_bot = bl[0] + (br[0] - bl[0]) * dx
         lon = lon_top + (lon_bot - lon_top) * dy
 
-        ll_points.append((lat, lon))
+        ll_points.append([lat, lon])
 
     return ll_points
 

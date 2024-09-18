@@ -200,6 +200,8 @@ async def async_main(task_type: DetectionTaskType):
 
         def _update_param(input_param_dict: Dict):
             nonlocal input_params, pre_param_conf, reload_model, model
+            if not pre_param_conf:
+                return
             input_param_no_file_dict = {
                 k: v for k, v in input_param_dict.items() if k != "input_files"
             }
@@ -259,6 +261,8 @@ async def async_main(task_type: DetectionTaskType):
 
         async def _update_task(msg: str, stat: int = 0):
             nonlocal session, current_task
+            if not current_task:
+                return
             await update_task_info(current_task, msg, session, stat)
 
         async def _infer_image_params() -> Tuple[np.ndarray | None, bool]:
@@ -385,7 +389,7 @@ async def async_main(task_type: DetectionTaskType):
                     output = filter_3d_array(output, valid_idx)
                     # xyxyxyxy = xyxyxyxy[valid_idx]
                     xyxyxyxy = filter_3d_array(xyxyxyxy, valid_idx)
-                    flat_xy = xyxyxyxy.reshape(-1, 2)
+                    # flat_xy = xyxyxyxy.reshape(-1, 2)
 
                     # Convert angles to `Bearings maths`
                     output[..., 4] -= 90
@@ -396,25 +400,33 @@ async def async_main(task_type: DetectionTaskType):
                     try:
                         tif_meta = read_tif_meta(tmp_im_path)
                         lat_long_center = [
-                            [
-                                pixel_point_to_lat_long(
-                                    np.int64(box[..., 0:2]), tif_meta
-                                )
-                                for box in classes_boxes
-                            ]
+                            # pixel_point_to_lat_long(
+                            #     (box[..., 0:2]), tif_meta
+                            # )
+                            # for box in classes_boxes
+                            pixel_point_to_lat_long(classes_boxes[..., 0:2], tif_meta)
                             for classes_boxes in output
                         ]
                         lat_long_center = np.array(lat_long_center).reshape(
-                            output.shape[:-1], 2
+                            *output.shape[:-1], 2
                         )
                     except Exception:
                         await _update_task("Read crs from image failed!")
                         continue
 
-                    latlong_xy = pixel_point_to_lat_long(tmp_im_path, flat_xy)
-                    latlong_xyxyxyxy = np.array(latlong_xy).reshape(
-                        output.shape[:-1], 4, 2
+                    # latlong_xy = pixel_point_to_lat_long(tmp_im_path, flat_xy)
+                    latlong_xy = np.array(
+                        [
+                            [
+                                pixel_point_to_lat_long(box_xy, tif_meta)
+                                for box_xy in classes_xy
+                            ]
+                            for classes_xy in xyxyxyxy
+                        ]
                     )
+                    # latlong_xyxyxyxy = np.array(latlong_xy).reshape(
+                    #     output.shape[:-1], 4, 2
+                    # )
                     # lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
                     lat_long_wh = np.array(
                         [
@@ -430,7 +442,7 @@ async def async_main(task_type: DetectionTaskType):
                                 ]
                                 for box in class_bboxes
                             ]
-                            for class_bboxes in latlong_xyxyxyxy
+                            for class_bboxes in latlong_xy
                         ]
                     )
 
@@ -462,7 +474,7 @@ async def async_main(task_type: DetectionTaskType):
                             class_id = (
                                 cls_i
                                 if task_type != DetectionTaskType.SHIP
-                                else ObjectCategory.SHIP
+                                else ObjectCategory.SHIP.value
                             )
                             image_detect_results.append(
                                 ExtractedObject(
