@@ -5,9 +5,9 @@ from pydantic import BaseModel
 
 
 class DetectionTaskType(Enum):
-    ship = 5
-    change = 20
-    military = 21
+    SHIP = 5
+    CHANGE = 20
+    MILLITARY = 21
 
     def __str__(self) -> str:
         # return f"{self.value} for {self.name}"

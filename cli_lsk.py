@@ -124,13 +124,13 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
 
 def load_task_config(task_type: DetectionTaskType) -> DetectionParam | None:
     match task_type:
-        case DetectionTaskType.ship:
+        case DetectionTaskType.SHIP:
             config = open("./config/ship.json", "r").read()
             return DetectionParam.model_validate_json(config)
-        case DetectionTaskType.change:
+        case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
             return DetectionParam.model_validate_json(config)
-        case DetectionTaskType.military:
+        case DetectionTaskType.MILLITARY:
             config = open("./config/military.json", "r").read()
             return DetectionParam.model_validate_json(config)
         case _:
@@ -266,7 +266,7 @@ async def async_main(task_type: DetectionTaskType):
             return result, True
 
         try:
-            for cls_id, t in enumerate(tasks):
+            for task_i, t in enumerate(tasks):
                 if t.task_id_ref and t.task_id_ref != 0:
                     # t has to wait to task with id = t.task_id_ref
                     stmt_ref_tasks = (
@@ -341,16 +341,16 @@ async def async_main(task_type: DetectionTaskType):
 
                     valid_idx = np.zeros(cls_rbboxes.shape[:2])
                     patches = np.zeros_like(valid_idx)
-                    for cls_id, rbboxes in enumerate(cls_rbboxes):
-                        for box_id, box in rbboxes:
+                    for cls_i, rbboxes in enumerate(cls_rbboxes):
+                        for box_i, box in rbboxes:
                             patch = crop_rotated_rectangle(
                                 im, box
                             )  # patch if None if crop failed
                             if patch is not None:
                                 # patches.append(patch)
                                 # valid_idx.append(cls_id)
-                                patches[cls_id, box_id] = 1
-                                valid_idx[cls_id, box_id] = 1
+                                patches[cls_i, box_i] = patch
+                                valid_idx[cls_i, box_i] = 1
 
                     output = output[valid_idx]
                     xyxyxyxy = xyxyxyxy[valid_idx]
@@ -367,22 +367,33 @@ async def async_main(task_type: DetectionTaskType):
                         lat_long_center = pixel_point_to_lat_long(
                             output[..., 0:2], tif_meta
                         )
+                        lat_long_center = np.array(lat_long_center).reshape(
+                            output.shape[:-1], 2
+                        )
                     except Exception:
                         await _update_task("Read crs from image failed!")
                         continue
 
                     latlong_xy = pixel_point_to_lat_long(tmp_im_path, flat_xy)
-                    latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4, 2)
+                    latlong_xyxyxyxy = np.array(latlong_xy).reshape(
+                        output.shape[:-1], 4, 2
+                    )
                     # lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
                     lat_long_wh = np.array(
                         [
                             [
-                                latlong2meter(
-                                    row[i][1], row[i][0], row[i + 1][1], row[i + 1][0]
-                                )
-                                for i in range(2)
+                                [
+                                    latlong2meter(
+                                        box[i][1],
+                                        box[i][0],
+                                        box[i + 1][1],
+                                        box[i + 1][0],
+                                    )
+                                    for i in range(2)
+                                ]
+                                for box in class_row
                             ]
-                            for row in latlong_xyxyxyxy
+                            for class_row in latlong_xyxyxyxy
                         ]
                     )
 
@@ -392,30 +403,39 @@ async def async_main(task_type: DetectionTaskType):
                     )
 
                     image_detect_results: List[Dict] = []
-                    for cls_id, (p, c) in enumerate(zip(patches, lat_long_coords)):
-                        im_id = f"{cls_id:03d}"
-                        path = os.path.join(save_dir, im_id)
-                        patch_lb_path = path + ".txt"
-                        patch_im_path = path + ".png"
-                        # Box xyxyxyxy
-                        # coords = xy.tolist()
+                    # for cls_id, (p, c) in enumerate(zip(patches, lat_long_coords)):
+                    for cls_i in range(output.shape[0]):
+                        for box_i, (p, c) in enumerate(
+                            zip(patches[cls_i], lat_long_coords[cls_i])
+                        ):
+                            im_id = f"{cls_i:03d}_{box_i:04d}"
+                            path = os.path.join(save_dir, im_id)
+                            patch_lb_path = path + ".txt"
+                            patch_im_path = path + ".png"
+                            # Box xyxyxyxy
+                            # coords = xy.tolist()
 
-                        # Box cx, cy, w, h, angle
-                        coords = c.tolist()
-                        write_ftp_image(p, ".png", patch_im_path)
-                        write_text_file(
-                            " ".join([str(i) for i in coords]), patch_lb_path
-                        )
+                            # Box cx, cy, w, h, angle
+                            coords = c.tolist()
+                            write_ftp_image(p, ".png", patch_im_path)
+                            write_text_file(
+                                " ".join([str(i) for i in coords]), patch_lb_path
+                            )
 
-                        image_detect_results.append(
-                            ExtractedObject(
-                                id=im_id,
-                                path=patch_im_path,
-                                coords=coords,
-                                lb_path=patch_lb_path,
-                                class_id=ObjectCategory.SHIP,
-                            ).model_dump()
-                        )
+                            class_id = (
+                                cls_i
+                                if task_type != DetectionTaskType.SHIP
+                                else ObjectCategory.SHIP
+                            )
+                            image_detect_results.append(
+                                ExtractedObject(
+                                    id=im_id,
+                                    path=patch_im_path,
+                                    coords=coords,
+                                    lb_path=patch_lb_path,
+                                    class_id=class_id,
+                                ).model_dump()
+                            )
 
                     detect_results.append(
                         {"image_id": image_id, "detections": image_detect_results}
