@@ -140,7 +140,7 @@ def load_task_config(task_type: DetectionTaskType) -> DetectionParam | None:
         case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
             return DetectionParam.model_validate_json(config)
-        case DetectionTaskType.MILLITARY:
+        case DetectionTaskType.MILITARY:
             config = open("./config/military.json", "r").read()
             return DetectionParam.model_validate_json(config)
         case _:
@@ -159,6 +159,8 @@ async def async_main(task_type: DetectionTaskType):
     bname: str = ""
     save_dir: str = ""
     pre_param_conf = load_task_config(task_type)
+    if not pre_param_conf:
+        return
     input_params: DetectionInputParam = DetectionInputParam(
         **pre_param_conf.model_dump(),
         input_files=[""],

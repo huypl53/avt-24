@@ -7,7 +7,7 @@ from pydantic import BaseModel
 class DetectionTaskType(Enum):
     SHIP = 5
     CHANGE = 20
-    MILLITARY = 21
+    MILITARY = 21
 
     def __str__(self) -> str:
         # return f"{self.value} for {self.name}"
