@@ -11,7 +11,7 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 from dictdiffer import diff
-from core import Worker
+from core import BoxDetect, Worker
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
@@ -318,7 +318,8 @@ async def async_main(task_type: DetectionTaskType):
                 t.task_param = input_params.model_dump_json()
                 await session.commit()
                 detect_results = []
-                for image_path in input_params.input_files:
+                detection_history = [[]] * len(input_params.input_files)
+                for im_th, image_path in enumerate(input_params.input_files):
                     image_id = image_path
                     _, success = await _process_image(image_path)
                     if not success:
@@ -327,13 +328,15 @@ async def async_main(task_type: DetectionTaskType):
                     if not success:
                         continue
                     if classes_results is None or not len(classes_results):
-                        await _update_task("No detection", 1)
+                        # await _update_task("No detection", 1)
                         continue
 
+                    # detection_history[im_th] = classes_results
                     # TODO: handle score thresh
                     # classes_results = np.array(classes_results)
                     image_detect_results: List[Dict] = []
                     for class_id, class_rbboxes in enumerate(classes_results):
+                        detection_history[im_th].append([])
                         # output = result[:, result[..., -1] > input_params.score_thr]
                         output = np.array(class_rbboxes)
                         output = output[output[..., -1] > input_params.score_thr]
@@ -405,9 +408,6 @@ async def async_main(task_type: DetectionTaskType):
                             path = os.path.join(save_dir, im_id)
                             patch_lb_path = path + ".txt"
                             patch_im_path = path + ".png"
-                            # Box xyxyxyxy
-                            # coords = xy.tolist()
-
                             # Box cx, cy, w, h, angle
                             coords = c.tolist()
                             write_ftp_image(p, ".png", patch_im_path)
@@ -429,12 +429,25 @@ async def async_main(task_type: DetectionTaskType):
                                     class_id=cate_id,
                                 ).model_dump()
                             )
+
+                            box_dect = BoxDetect.BoxDetect(
+                                *output[box_i, :4], *c, class_id, output[box_i, -1]  # type: ignore
+                            )
+                            box_dect.im_id = im_id
+                            box_dect.im_path = patch_lb_path
+                            detection_history[im_th][class_id].append(box_dect)
                     ## ------------------------
 
                     detect_results.append(
                         {"image_id": image_id, "detections": image_detect_results}
                     )
-                t.task_output = json.dumps(detect_results)
+                final_output = dict({"detect_results": detect_results})
+                if task_type == DetectionTaskType.CHANGE:
+                    num_images = len(detection_history)
+                    pass
+                if task_type == DetectionTaskType.MILITARY:
+                    pass
+                t.task_output = json.dumps(final_output)
                 t.task_stat = 1
                 t.task_message = "Successfully"
                 if os.path.isfile(tmp_im_path):
