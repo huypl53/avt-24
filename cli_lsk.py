@@ -330,136 +330,78 @@ async def async_main(task_type: DetectionTaskType):
                         await _update_task("No detection", 1)
                         continue
 
-                    # output = np.array(result[0])  # take first list of boxes from batch
-
                     # TODO: handle score thresh
-                    classes_results = np.array(classes_results)
-                    # output = result[:, result[..., -1] > input_params.score_thr]
-                    score_mask = classes_results[..., -1] > input_params.score_thr
-                    output = np.array(
-                        [
+                    # classes_results = np.array(classes_results)
+                    image_detect_results: List[Dict] = []
+                    for class_id, class_rbboxes in enumerate(classes_results):
+                        # output = result[:, result[..., -1] > input_params.score_thr]
+                        output = np.array(class_rbboxes)
+                        output = output[output[..., -1] > input_params.score_thr]
+
+                        if not len(output):
+                            continue
+                        xyxyxyxy = xywhr2xyxyxyxy(output)
+                        output[..., 4] = np.degrees(output[..., 4])
+                        rbboxes = list(
                             [
-                                bbox
-                                for bbox, mask in zip(class_boxes, bbox_masks)
-                                if mask
+                                [
+                                    int(box[0]),
+                                    int(box[1]),
+                                    int(box[2]),
+                                    int(box[3]),
+                                    box[4],
+                                ]
+                                for box in output
                             ]
-                            for class_boxes, bbox_masks in zip(
-                                classes_results, score_mask
-                            )
-                        ]
-                    )
-
-                    if not len(output):
-                        await _update_task("No detection reachs score thresh", 1)
-                        continue
-                    xyxyxyxy = xywhr2xyxyxyxy(output)
-                    output[..., 4] = np.degrees(output[..., 4])
-
-                    # this is to crop detected patach only
-                    cls_rbboxes = [
-                        [
-                            [
-                                int(box[0]),
-                                int(box[1]),
-                                int(box[2]),
-                                int(box[3]),
-                                box[4],
-                            ]
-                            for box in class_bboxes
-                        ]
-                        for class_bboxes in output
-                    ]
-
-                    # Pick only valid boxes that provide rectangle
-                    # valid_idx: List[int] = []
-                    # patches: List[np.ndarray] = []
-
-                    valid_idx = np.zeros(output.shape[:2])
-                    patches = np.zeros_like(valid_idx).tolist()
-                    for cls_i, rbboxes in enumerate(cls_rbboxes):
-                        for box_i, box in enumerate(rbboxes):
+                        )
+                        valid_idx: List[int] = []
+                        patches: List[np.ndarray] = []
+                        for i, box in enumerate(rbboxes):
                             patch = crop_rotated_rectangle(
                                 im, box
                             )  # patch if None if crop failed
                             if patch is not None:
-                                # patches.append(patch)
-                                # valid_idx.append(cls_id)
-                                patches[cls_i][box_i] = patch
-                                valid_idx[cls_i, box_i] = 1
+                                patches.append(patch)
+                                valid_idx.append(i)
+                        output = output[valid_idx]
+                        xyxyxyxy = xyxyxyxy[valid_idx]
+                        flat_xy = xyxyxyxy.reshape(-1, 2)
 
-                    # output = output[valid_idx]
-                    output = filter_3d_array(output, valid_idx)
-                    # xyxyxyxy = xyxyxyxy[valid_idx]
-                    xyxyxyxy = filter_3d_array(xyxyxyxy, valid_idx)
-                    # flat_xy = xyxyxyxy.reshape(-1, 2)
+                        # Convert angles to `Bearings maths`
+                        output[..., 4] -= 90
+                        angles = output[..., 4]
+                        output[..., 4][angles > 0] = 360 - angles[angles > 0]
+                        output[..., 4][angles < 0] = -angles[angles < 0]
 
-                    # Convert angles to `Bearings maths`
-                    output[..., 4] -= 90
-                    angles = output[..., 4]
-                    output[..., 4][angles > 0] = 360 - angles[angles > 0]
-                    output[..., 4][angles < 0] = -angles[angles < 0]
-
-                    try:
                         tif_meta = read_tif_meta(tmp_im_path)
-                        lat_long_center = [
-                            # pixel_point_to_lat_long(
-                            #     (box[..., 0:2]), tif_meta
-                            # )
-                            # for box in classes_boxes
-                            pixel_point_to_lat_long(classes_boxes[..., 0:2], tif_meta)
-                            for classes_boxes in output
-                        ]
-                        lat_long_center = np.array(lat_long_center).reshape(
-                            *output.shape[:-1], 2
-                        )
-                    except Exception:
-                        await _update_task("Read crs from image failed!")
-                        continue
-
-                    # latlong_xy = pixel_point_to_lat_long(tmp_im_path, flat_xy)
-                    latlong_xy = np.array(
-                        [
-                            [
-                                pixel_point_to_lat_long(box_xy, tif_meta)
-                                for box_xy in classes_xy
-                            ]
-                            for classes_xy in xyxyxyxy
-                        ]
-                    )
-                    # latlong_xyxyxyxy = np.array(latlong_xy).reshape(
-                    #     output.shape[:-1], 4, 2
-                    # )
-                    # lat_long_wh = pixel_point_to_lat_long(tmp_im_path, output[..., 2:4])
-                    lat_long_wh = np.array(
-                        [
-                            [
+                        try:
+                            lat_long_center = pixel_point_to_lat_long(
+                                output[..., 0:2], tif_meta
+                            )
+                            latlong_xy = pixel_point_to_lat_long(flat_xy, tif_meta)
+                            latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4, 2)
+                            lat_long_wh = np.array(
                                 [
-                                    latlong2meter(
-                                        box[i][1],
-                                        box[i][0],
-                                        box[i + 1][1],
-                                        box[i + 1][0],
-                                    )
-                                    for i in range(2)
+                                    [
+                                        latlong2meter(
+                                            row[i][1],
+                                            row[i][0],
+                                            row[i + 1][1],
+                                            row[i + 1][0],
+                                        )
+                                        for i in range(2)
+                                    ]
+                                    for row in latlong_xyxyxyxy
                                 ]
-                                for box in class_bboxes
-                            ]
-                            for class_bboxes in latlong_xy
-                        ]
-                    )
-
-                    # [[lat_c, lon_c, w_meter, h_meter, score, angle_degree],]
-                    lat_long_coords = np.concatenate(
-                        (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
-                    )
-
-                    image_detect_results: List[Dict] = []
-                    # for cls_id, (p, c) in enumerate(zip(patches, lat_long_coords)):
-                    for cls_i in range(output.shape[0]):
-                        for box_i, (p, c) in enumerate(
-                            zip(patches[cls_i], lat_long_coords[cls_i])
-                        ):
-                            im_id = f"{cls_i:03d}_{box_i:04d}"
+                            )
+                        except Exception:
+                            await _update_task("Read crs from image failed!")
+                            continue
+                        lat_long_coords = np.concatenate(
+                            (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
+                        )
+                        for box_i, (p, c) in enumerate(zip(patches, lat_long_coords)):
+                            im_id = f"{class_id:03d}_{box_i:04d}"
                             path = os.path.join(save_dir, im_id)
                             patch_lb_path = path + ".txt"
                             patch_im_path = path + ".png"
@@ -473,8 +415,8 @@ async def async_main(task_type: DetectionTaskType):
                                 " ".join([str(i) for i in coords]), patch_lb_path
                             )
 
-                            class_id = (
-                                cls_i
+                            cate_id = (
+                                class_id
                                 if task_type != DetectionTaskType.SHIP
                                 else ObjectCategory.SHIP.value
                             )
@@ -484,9 +426,10 @@ async def async_main(task_type: DetectionTaskType):
                                     path=patch_im_path,
                                     coords=coords,
                                     lb_path=patch_lb_path,
-                                    class_id=class_id,
+                                    class_id=cate_id,
                                 ).model_dump()
                             )
+                    ## ------------------------
 
                     detect_results.append(
                         {"image_id": image_id, "detections": image_detect_results}
