@@ -1,7 +1,6 @@
-from core.box_detect import BoxDetect
-from typing import Iterable, Union, List
-from collections.abc import Sequence
+from typing import List
 
+from core.box_detect import BoxDetect
 from core.movement import Movement
 
 
