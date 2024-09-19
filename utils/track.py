@@ -61,7 +61,7 @@ def detect_list_roatated_movement(
                     displacement > translation_threshold
                     or rotation_diff > rotation_threshold
                 ):
-                    m = BoxMovement(displacement, rotation_diff)
+                    m = BoxMovement(result1, result2, displacement, rotation_diff)
                     # movements.append((i, j, m))
                     movements.append(m)
 

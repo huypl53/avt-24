@@ -18,6 +18,7 @@ from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncSession
+import argparse
 
 from app.db.connector import AsyncSessionFactory, get_db
 
@@ -323,7 +324,7 @@ async def async_main(task_type: DetectionTaskType):
                 t.task_param = input_params.model_dump_json()
                 await session.commit()
                 detect_results = []
-                detection_history: List[List[BoxDetect]] = [[]] * len(
+                detection_history: List[List[List[BoxDetect]]] = [[]] * len(
                     input_params.input_files
                 )
                 for im_th, image_path in enumerate(input_params.input_files):
@@ -456,13 +457,17 @@ async def async_main(task_type: DetectionTaskType):
                                 new_record = BoxRecord(
                                     cate_id=cls_i, steps_num=num_images, start_step=im_i
                                 )
-                                new_record.check_new_target(current_box_det)
+                                new_record.check_new_target(
+                                    current_box_det, step=im_i, save=True
+                                )
                                 for next_im_i in range(im_i + 1, num_images):
                                     next_cls_box_dets = detection_history[next_im_i][
                                         cls_i
                                     ]
                                     for next_box_det in next_cls_box_dets:
-                                        new_record.check_new_target(next_box_det)
+                                        new_record.check_new_target(
+                                            next_box_det, step=im_i, save=True
+                                        )
                                 new_record.update_longest_sequence()
                                 records.append(new_record)
 

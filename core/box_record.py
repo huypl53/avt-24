@@ -1,10 +1,11 @@
 from core.box_detect import BoxDetect
 from typing import Iterable, Union, List
+from collections.abc import Sequence
 
 from core.movement import Movement
 
 
-class BoxRecord:
+class BoxRecord(dict):
     def __init__(
         self,
         cate_id: int,
@@ -21,17 +22,14 @@ class BoxRecord:
         self.start_step = start_step
         self.longest_sequence: List[BoxDetect] = []
         self.max_start_i, self.max_end_i = 0, 0
+        self.__update()
 
-    def check_new_target(
-        self, target: BoxDetect | Iterable[float | int], step: int, save=True
-    ) -> bool:
-        if not isinstance(target, BoxDetect):
-            target = BoxDetect(*target)
+    def check_new_target(self, target: BoxDetect, step: int, save=True) -> bool:
         _last_record = self.last_record
 
         if self.last_step == 0 or step > self.last_step:
             self.last_step = step
-        if not self.last_record:
+        if not _last_record:
             if save:
                 self.records[step] = target
             return True
@@ -43,6 +41,10 @@ class BoxRecord:
 
         if not movement:
             return False
+        return True
+
+    def __update(self):
+        dict.update(self, self.__dict__)
 
     @property
     def last_record(self):
@@ -70,5 +72,8 @@ class BoxRecord:
             return
         self.max_start_i = max_start_i
         self.max_end_i = max_end_i
-        self.longest_sequence = self.records[max_start_i:max_end_i]
-        self.longest_history = self.history[max_start_i : max_end_i - 1]
+        self.longest_sequence = [r for r in self.records[max_start_i:max_end_i] if r]
+        self.longest_history = [
+            h for h in self.history[max_start_i : max_end_i - 1] if h
+        ]
+        self.__update()

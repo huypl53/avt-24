@@ -65,9 +65,7 @@ class BoxDetect(Box):
     def __update(self):
         dict.update(self, self.__dict__)
 
-    def is_moved(
-        self, target: "BoxDetect" | Iterable[Union[float, int]]
-    ) -> None | Movement:
+    def is_moved(self, target: "BoxDetect") -> None | Movement:
         """Check if box moved to target
 
         Args:
@@ -76,11 +74,10 @@ class BoxDetect(Box):
         Returns:
             _type_: _description_
         """
-        target_box = target_box if isinstance(target, "BoxDetect") else target
         if self.cate_id != target.cate_id:
             return None
         movements = detect_list_roatated_movement(
-            [self.box], [target_box], translation_threshold=25, rotation_threshold=7
+            [self], [target], translation_threshold=25, rotation_threshold=7
         )
         if len(movements):
             return movements[0]
