@@ -1,4 +1,4 @@
-from core.movement import Movement
+from core.box_record import BoxMovement, Movement
 
 
 class Box(dict):
@@ -92,7 +92,7 @@ import cv2
 import numpy as np
 
 from core.box_detect import BoxDetect
-from core.movement import BoxMovement, Movement
+from core.box_record import Movement
 
 
 def rotated_iou(box1, box2):
