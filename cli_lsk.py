@@ -433,7 +433,7 @@ async def async_main(task_type: DetectionTaskType):
                             )
 
                             box_dect = BoxDetect(
-                                im_id, *output[box_i, :4], *c, class_id, output[box_i, -1]  # type: ignore
+                                im_id, *output[box_i, :4], *c[:5], class_id, output[box_i, -1]  # type: ignore
                             )
                             box_dect.im_path = patch_lb_path
                             detection_history[im_th][class_id].append(box_dect)

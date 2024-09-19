@@ -91,8 +91,8 @@ class BoxRecord(dict):
 class BoxMovement(Movement):
     def __init__(
         self,
-        pre_box: BoxDetect,
-        next_box: BoxDetect,
+        pre_box: "BoxDetect",
+        next_box: "BoxDetect",
         displacement: float,
         rotaion_shift: float,
     ) -> None:
