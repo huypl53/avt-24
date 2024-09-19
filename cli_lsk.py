@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import multiprocessing
@@ -10,18 +11,13 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 from dictdiffer import diff
-from core import Worker
-from core.box_detect import BoxDetect
-from core.box_record import BoxRecord
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncSession
-import argparse
 
 from app.db.connector import AsyncSessionFactory, get_db
-
 from app.model.task import TaskMd
 from app.schema import (
     DetectionInputParam,
@@ -36,6 +32,8 @@ from app.service.binio import (
     write_ftp_image,
     write_text_file,
 )
+from core import Worker
+from core.box_record import BoxDetect, BoxRecord
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
 from utils.raster import (
