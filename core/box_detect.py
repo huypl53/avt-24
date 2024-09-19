@@ -1,54 +1,92 @@
 from typing import Iterable, Union
 
-from utils.track import detect_movement_rotated
+from core.movement import Movement
+from utils.track import detect_list_roatated_movement
 
 
-class BoxDetect:
-    def __init__(
-        self,
-        x: float,
-        y: float,
-        w: float,
-        h: float,
-        # xl: float,
-        # yl: float,
-        # wm: float,
-        # hm: float,
-        angle: float,
-        cate_id: float = 0,
-        score: float = 1.0,
-    ) -> None:
+class Box(dict):
+    def __init__(self, x: float, y: float, w: float, h: float, angle: float):
+
         self.x = x
         self.y = y
         self.w = w
         self.h = h
+        self.angle = angle
 
-        # self.xl = xl
-        # self.yl = yl
-        # self.wm = wm
-        # self.hm = hm
+        super().__init__(self.__dict__)
+
+    @property
+    def box(self):
+        return (self.x, self.y, self.w, self.h, self.angle)
+
+
+class BoxDetect(Box):
+    def __init__(
+        self,
+        id: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        xl: float,
+        yl: float,
+        wm: float,
+        hm: float,
+        angle: float,
+        cate_id: float = 0,
+        score: float = 1.0,
+    ) -> None:
+
+        self.xl = xl
+        self.yl = yl
+        self.wm = wm
+        self.hm = hm
 
         self.cate_id = int(cate_id)
         self.angle = angle
         self.score = score
-        self.im_id = ""
-        self.im_path = ""
+
+        self._id = id
+        self._im_path = ""
+        self.went_by = False
+
+        super().__init__(x, y, w, h, angle)
+        self.__update()
 
     @property
-    def box(self):
-        return (self.x, self.x, self.w, self.h, self.angle)
+    def im_path(self):
+        return self._im_path
 
-    def is_moved(self, target: "BoxDetect" | Iterable[Union[float, int]]):
+    @im_path.setter
+    def im_path(self, v: str):
+        self._im_path = v
+        self.__update()
+
+    def __update(self):
+        dict.update(self, self.__dict__)
+
+    def is_moved(
+        self, target: "BoxDetect" | Iterable[Union[float, int]]
+    ) -> None | Movement:
         """Check if box moved to target
 
         Args:
-            target (BoxDetect&#39; | Iterable[Union[ float, int ]]): has same shape as self
-        """
-        if isinstance(target, "BoxDetect"):
-            return detect_movement_rotated([self.box], [target.box])
-        else:
-            return detect_movement_rotated([self.box], [target])
+            target (BoxDetect | Iterable[Union[ float, int ]]): has same shape as self
 
-    @classmethod
-    def detect_movement(cls, box1: "BoxDetect", box2: "BoxDetect"):
-        pass
+        Returns:
+            _type_: _description_
+        """
+        target_box = target_box if isinstance(target, "BoxDetect") else target
+        if self.cate_id != target.cate_id:
+            return None
+        movements = detect_list_roatated_movement(
+            [self.box], [target_box], translation_threshold=25, rotation_threshold=7
+        )
+        if len(movements):
+            return movements[0]
+        else:
+            return None
+
+    @staticmethod
+    def detect_movement(box1: "BoxDetect", box2: "BoxDetect"):
+        return box1.is_moved(box2)

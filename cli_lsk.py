@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import json
 import multiprocessing
@@ -11,7 +10,9 @@ from typing import Dict, List, Tuple
 import cv2
 import numpy as np
 from dictdiffer import diff
-from core import BoxDetect, Worker
+from core import Worker
+from core.box_detect import BoxDetect
+from core.box_record import BoxRecord
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
@@ -20,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connector import AsyncSessionFactory, get_db
 
-# from app.db.spawn import DbProcess
 from app.model.task import TaskMd
 from app.schema import (
     DetectionInputParam,
@@ -37,7 +37,12 @@ from app.service.binio import (
 )
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
-from utils.raster import latlong2meter, pixel_point_to_lat_long, read_tif_meta
+from utils.raster import (
+    angle_to_bearings,
+    latlong2meter,
+    pixel_point_to_lat_long,
+    read_tif_meta,
+)
 
 
 async def update_task_info(
@@ -318,7 +323,9 @@ async def async_main(task_type: DetectionTaskType):
                 t.task_param = input_params.model_dump_json()
                 await session.commit()
                 detect_results = []
-                detection_history = [[]] * len(input_params.input_files)
+                detection_history: List[List[BoxDetect]] = [[]] * len(
+                    input_params.input_files
+                )
                 for im_th, image_path in enumerate(input_params.input_files):
                     image_id = image_path
                     _, success = await _process_image(image_path)
@@ -370,11 +377,7 @@ async def async_main(task_type: DetectionTaskType):
                         xyxyxyxy = xyxyxyxy[valid_idx]
                         flat_xy = xyxyxyxy.reshape(-1, 2)
 
-                        # Convert angles to `Bearings maths`
-                        output[..., 4] -= 90
-                        angles = output[..., 4]
-                        output[..., 4][angles > 0] = 360 - angles[angles > 0]
-                        output[..., 4][angles < 0] = -angles[angles < 0]
+                        output = angle_to_bearings(output, 4)
 
                         tif_meta = read_tif_meta(tmp_im_path)
                         try:
@@ -430,10 +433,9 @@ async def async_main(task_type: DetectionTaskType):
                                 ).model_dump()
                             )
 
-                            box_dect = BoxDetect.BoxDetect(
-                                *output[box_i, :4], *c, class_id, output[box_i, -1]  # type: ignore
+                            box_dect = BoxDetect(
+                                im_id, *output[box_i, :4], *c, class_id, output[box_i, -1]  # type: ignore
                             )
-                            box_dect.im_id = im_id
                             box_dect.im_path = patch_lb_path
                             detection_history[im_th][class_id].append(box_dect)
                     ## ------------------------
@@ -443,8 +445,34 @@ async def async_main(task_type: DetectionTaskType):
                     )
                 final_output = dict({"detect_results": detect_results})
                 if task_type == DetectionTaskType.CHANGE:
+                    consecutive_thresh = 0.6
                     num_images = len(detection_history)
-                    pass
+                    num_cls = len(detection_history[0])
+                    records: List[BoxRecord] = []
+                    for cls_i in range(num_cls):
+                        for im_i in range(num_images - 1):
+                            current_cls_box_dets = detection_history[im_i][cls_i]
+                            for current_box_det in current_cls_box_dets:
+                                new_record = BoxRecord(
+                                    cate_id=cls_i, steps_num=num_images, start_step=im_i
+                                )
+                                new_record.check_new_target(current_box_det)
+                                for next_im_i in range(im_i + 1, num_images):
+                                    next_cls_box_dets = detection_history[next_im_i][
+                                        cls_i
+                                    ]
+                                    for next_box_det in next_cls_box_dets:
+                                        new_record.check_new_target(next_box_det)
+                                new_record.update_longest_sequence()
+                                records.append(new_record)
+
+                    valid_records = [
+                        r
+                        for r in records
+                        if len(r.longest_sequence) / num_images > consecutive_thresh
+                    ]
+                    dict.update(final_output, {"movement": valid_records})
+
                 if task_type == DetectionTaskType.MILITARY:
                     pass
                 t.task_output = json.dumps(final_output)

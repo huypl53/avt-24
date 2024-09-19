@@ -99,6 +99,15 @@ def haversine(lon1, lat1, lon2, lat2):
     return distance_m
 
 
+def angle_to_bearings(data: np.ndarray, i) -> np.ndarray:
+    output = np.copy(data)
+    output[..., i] -= 90
+    angles = output[..., i]
+    output[..., i][angles > 0] = 360 - angles[angles > 0]
+    output[..., i][angles < 0] = -angles[angles < 0]
+    return output
+
+
 if __name__ == "__main__":
     # Example usage:
     lon1, lat1 = -73.935242, 40.730610  # New York City coordinates
