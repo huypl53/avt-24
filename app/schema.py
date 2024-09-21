@@ -21,6 +21,9 @@ class DetectionTaskType(Enum):
             raise ValueError() from exc
 
 
+SHIP_LABELS = ["tau_ca", "tau_hang", "tau_quan_su"]
+
+
 class Management(BaseModel):
     task_id: int
     task_type: int  # 1: hiệu chỉnh (Học)
@@ -75,30 +78,33 @@ class DetectionInputParam(DetectionParam):
     input_files: List[str]
 
 
-class ObjectCategory(Enum):
-    # SHIP = 0
-    # AIRPORT = 1
-    # AIRPLANE = 2
-    # INFRASTRUCTURE = 3
-    # ROAD = 4
-    # TANK = 5
+ObjectCategory = dict(
+    {
+        0: "plane",
+        1: "ship",
+        2: "storage_tank",
+        3: "baseball_diamond",
+        4: "tennis_court",
+        5: "basketball_court",
+        6: "ground_track_field",
+        7: "harbor",
+        8: "bridge",
+        9: "large_vehicle",
+        10: "small_vehicle",
+        11: "helicopter",
+        12: "roundabout",
+        13: "soccer_ball_field",
+        14: "swimming_pool",
+    }
+)
+# SHIP = 0
+# AIRPORT = 1
+# AIRPLANE = 2
+# INFRASTRUCTURE = 3
+# ROAD = 4
+# TANK = 5
 
-    # Dota dataset
-    PLANE = 0
-    SHIP = 1
-    STORAGE_TANK = 2
-    BASEBALL_DIAMOND = 3
-    TENNIS_COURT = 4
-    BASKETBALL_COURT = 5
-    GROUND_TRACK_FIELD = 6
-    HARBOR = 7
-    BRIDGE = 8
-    LARGE_VEHICLE = 9
-    SMALL_VEHICLE = 10
-    HELICOPTER = 11
-    ROUNDABOUT = 12
-    SOCCER_BALL_FIELD = 13
-    SWIMMING_POOL = 14
+# Dota dataset
 
 
 class ExtractedObject(BaseModel):
@@ -106,4 +112,4 @@ class ExtractedObject(BaseModel):
     path: str
     coords: List[float]
     lb_path: Optional[str]
-    class_id: Optional[int] = None
+    class_id: Optional[str] = None

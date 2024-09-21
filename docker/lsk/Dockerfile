@@ -37,6 +37,7 @@ RUN <<EOF
     cd  /workspace/avt-detection/
     pip install -r requirements/lsk.txt
     pip install -r requirements/app.txt
+    pip install -r requirements/ship.txt
     cd ./LSKNet && pip install -v -e .
     pip cache purge
     conda clean --all -y

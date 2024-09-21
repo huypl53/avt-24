@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.connector import AsyncSessionFactory, get_db
 from app.model.task import TaskMd
 from app.schema import (
+    SHIP_LABELS,
     DetectionInputParam,
     DetectionParam,
     DetectionTaskType,
@@ -34,6 +35,7 @@ from app.service.binio import (
 )
 from core import Worker
 from core.box_record import BoxDetect, BoxRecord
+from core.ship.classifier import classify_ship
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
 from utils.raster import (
@@ -169,6 +171,7 @@ async def async_main(task_type: DetectionTaskType):
         **pre_param_conf.model_dump(),
         input_files=[""],
     )
+    extra_mesg = ""
     # counter = 0
     while True:
         # counter += 1
@@ -292,6 +295,7 @@ async def async_main(task_type: DetectionTaskType):
 
         try:
             for task_i, t in enumerate(tasks):
+                extra_mesg = ""
                 if t.task_id_ref and t.task_id_ref != 0:
                     # t has to wait to task with id = t.task_id_ref
                     stmt_ref_tasks = (
@@ -422,18 +426,26 @@ async def async_main(task_type: DetectionTaskType):
                                 " ".join([str(i) for i in coords]), patch_lb_path
                             )
 
-                            cate_id = (
-                                class_id
-                                if task_type != DetectionTaskType.SHIP
-                                else ObjectCategory.SHIP.value
-                            )
+                            if task_type != DetectionTaskType.SHIP:
+                                if class_id in ObjectCategory:
+                                    cate_name = ObjectCategory[class_id]
+                                else:
+                                    cate_name = str(class_id)
+                            else:
+                                try:
+                                    ship_id = classify_ship(p)
+                                    cate_name = SHIP_LABELS[ship_id]
+                                except:
+                                    extra_mesg += "Classify ship failed!"
+                                    cate_name = DetectionTaskType.SHIP.value
+
                             image_detect_results.append(
                                 ExtractedObject(
                                     id=im_id,
                                     path=patch_im_path,
                                     coords=coords,
                                     lb_path=patch_lb_path,
-                                    class_id=cate_id,
+                                    class_id=cate_name,
                                 ).model_dump()
                             )
 
@@ -512,7 +524,7 @@ async def async_main(task_type: DetectionTaskType):
                     pass
                 t.task_output = json.dumps(final_output)
                 t.task_stat = 1
-                t.task_message = "Successfully"
+                t.task_message = "\n".join(["Successfully", extra_mesg])
                 if os.path.isfile(tmp_im_path):
                     os.remove(tmp_im_path)
                 logger.info(f"Process task id = {t.id} successfully")
