@@ -237,12 +237,17 @@ async def async_main(task_type: DetectionTaskType):
                     }
                 )
             if reload_model:
-                model = init_detector(
-                    input_params.config,
-                    input_params.checkpoint,
-                    device=input_params.device,
-                )
-                reload_model = False
+                try:
+                    model = init_detector(
+                        input_params.config,
+                        input_params.checkpoint,
+                        device=input_params.device,
+                    )
+                    reload_model = False
+                except Exception as e:
+                    model = None
+                    reload_model = True
+                    raise e
 
         async def _process_image(input_file: str) -> Tuple[None | np.ndarray, bool]:
             nonlocal bname, save_dir, im, tmp_im_path, input_params
@@ -319,7 +324,7 @@ async def async_main(task_type: DetectionTaskType):
                 _update_param(input_param_dict)
 
                 # t.task_param = stringify_dict_list(input_params.model_dump())
-                t.task_param = input_params.model_dump_json()
+                t.task_param = input_params.model_dump_json(exclude_none=True)
                 await session.commit()
                 detect_results = []
                 detection_history: List[List[List[BoxDetect]]] = [[]] * len(
@@ -444,7 +449,6 @@ async def async_main(task_type: DetectionTaskType):
                     )
                 final_output = dict({"detect_results": detect_results})
                 if task_type == DetectionTaskType.CHANGE:
-                    consecutive_thresh = 0.6
                     num_images = len(detection_history)
                     num_cls = len(detection_history[0])
                     records: List[BoxRecord] = []
@@ -464,7 +468,7 @@ async def async_main(task_type: DetectionTaskType):
                                     ]
                                     for next_box_det in next_cls_box_dets:
                                         new_record.check_new_target(
-                                            next_box_det, step=im_i, save=True
+                                            next_box_det, step=next_im_i, save=True
                                         )
                                 new_record.update_longest_sequence()
                                 records.append(new_record)
@@ -472,9 +476,37 @@ async def async_main(task_type: DetectionTaskType):
                     valid_records = [
                         r
                         for r in records
-                        if len(r.longest_sequence) / num_images > consecutive_thresh
+                        if len(r.longest_sequence) / num_images
+                        > input_params.consecutive_thr
                     ]
                     dict.update(final_output, {"movement": valid_records})
+                if task_type == DetectionTaskType.MILITARY:
+                    num_images = len(detection_history)
+                    num_cls = len(detection_history[0])
+                    records: List[BoxRecord] = []
+                    for cls_i in range(num_cls):
+                        for im_i in range(num_images - 1):
+                            current_cls_box_dets = detection_history[im_i][cls_i]
+                            for current_box_det in current_cls_box_dets:
+                                new_record = BoxRecord(
+                                    cate_id=cls_i, steps_num=num_images, start_step=im_i
+                                )
+                                new_record.check_new_target(
+                                    current_box_det, step=im_i, save=True
+                                )
+                                for next_im_i in range(im_i + 1, num_images):
+                                    next_cls_box_dets = detection_history[next_im_i][
+                                        cls_i
+                                    ]
+                                    for next_box_det in next_cls_box_dets:
+                                        new_record.check_new_target(
+                                            next_box_det, step=next_im_i, save=True
+                                        )
+                                new_record.update_longest_sequence()
+                                records.append(new_record)
+
+                    valid_records = [r for r in records if r.max_start_i > 0]
+                    dict.update(final_output, {"military": valid_records})
 
                 if task_type == DetectionTaskType.MILITARY:
                     pass

@@ -67,6 +67,9 @@ class DetectionParam(IOParam):
     img_ratios: List[float]
     merge_iou_thr: float
 
+    # DetectionTaskType.change
+    consecutive_thr: Optional[float] = None  #
+
 
 class DetectionInputParam(DetectionParam):
     input_files: List[str]
