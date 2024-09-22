@@ -34,19 +34,19 @@ class BoxRecord(dict):
         self.__update()
 
     def check_new_target(self, target: "BoxDetect", step: int, save=True) -> bool:
-        _last_record = self.last_record
 
         if self.last_step == 0 or step > self.last_step:
             self.last_step = step
-        if not _last_record:
+        if not self.last_record:
             if save:
                 self.records[step] = target
             return True
 
-        movement = BoxDetect.detect_movement(_last_record, target)
+        movement = BoxDetect.detect_movement(self.last_record, target)
 
         if not movement:
             return False
+        # self.last_record.went_by = True
         if save:
             self.history[step - 1] = movement
             self.records[step] = target
@@ -84,7 +84,7 @@ class BoxRecord(dict):
             else:
                 current_len = 0
                 start_i = i + 1
-        max_end_i = max_start_i + max_len - 1
+        max_end_i = max_start_i + max_len
         if max_len < 1:
             return
         self.max_start_i = max_start_i
@@ -138,7 +138,9 @@ class BoxDetect(Box):
         wm: float,
         hm: float,
         angle: float,
-        cate_id: float = 0,
+        im_path: str,
+        lb_path: str,
+        cls_name: str = "object",
         score: float = 1.0,
     ) -> None:
 
@@ -147,12 +149,13 @@ class BoxDetect(Box):
         self.wm = wm
         self.hm = hm
 
-        self.cate_id = int(cate_id)
+        self.cls_name = cls_name
         self.angle = angle
         self.score = score
 
         self._id = id
-        self._im_path = ""
+        self._im_path = im_path
+        self.lb_path = lb_path
         self.went_by = False
 
         super().__init__(x, y, w, h, angle)
@@ -162,13 +165,33 @@ class BoxDetect(Box):
     def im_path(self):
         return self._im_path
 
+    @property
+    def lat_lon_result(self):
+        return [
+            self.xl,
+            self.yl,
+            self.wm,
+            self.hm,
+            self.angle,
+            self.score,
+        ]
+
     @im_path.setter
     def im_path(self, v: str):
         self._im_path = v
         self.__update()
 
     def __update(self):
-        dict.update(self, self.__dict__)
+        dict.update(
+            self,
+            {
+                "id": self._id,
+                "path": self._im_path,
+                "lb_path": self.lb_path,
+                "coords": self.lat_lon_result,
+                "class_id": self.cls_name,
+            },
+        )
 
     def is_moved(self, target: "BoxDetect") -> None | Movement:
         """Check if box moved to target
@@ -179,7 +202,7 @@ class BoxDetect(Box):
         Returns:
             _type_: _description_
         """
-        if self.cate_id != target.cate_id:
+        if self.cls_name != target.cls_name:
             return None
         movements = detect_list_roatated_movement(
             [self], [target], translation_threshold=25, rotation_threshold=7
