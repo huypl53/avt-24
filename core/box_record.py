@@ -44,12 +44,12 @@ class BoxRecord(dict):
             return True
 
         movement = BoxDetect.detect_movement(_last_record, target)
-        if save:
-            self.history[step] = movement
-            self.records[step] = target
 
         if not movement:
             return False
+        if save:
+            self.history[step - 1] = movement
+            self.records[step] = target
         return True
 
     def __update(self):
@@ -63,6 +63,14 @@ class BoxRecord(dict):
             return None
 
     def update_longest_sequence(self):
+        valid_records = [r for r in self.records if r is not None]
+        num_valid_records = len(valid_records)
+        if num_valid_records == 0:
+            return
+        elif num_valid_records == 1:
+            self.max_start_i = 0
+            self.max_end_i = 1
+            return
         start_i, max_start_i = 0, 0
         max_len = 0
         current_len = 0
@@ -264,7 +272,7 @@ def calc_roatated_movement(box1, box2):
     (x1, y1, w1, h1, a1) = box1
     (x2, y2, w2, h2, a2) = box2
 
-    displacement = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+    displacement = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2).astype(float)
 
     rotation_diff = abs(a2 - a1)
     return displacement, rotation_diff

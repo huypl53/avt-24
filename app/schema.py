@@ -75,7 +75,7 @@ class DetectionParam(IOParam):
 
 
 class DetectionInputParam(DetectionParam):
-    input_files: List[str]
+    input_file: List[str]
 
 
 ObjectCategory = dict(

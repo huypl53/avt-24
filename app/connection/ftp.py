@@ -7,10 +7,15 @@ from log import logger
 
 class _FtpConnector:
     def __init__(self) -> None:
+        self._try_connect()
+
+    def _reset(self):
         self.ftp_server = ftplib.FTP()
         self.ftp_server.encoding = "utf-8"
         self.connect_status = ""
         self.login_status = ""
+
+    def _try_connect(self):
         self.connect(
             settings.FTP_HOSTNAME,
             settings.FTP_PORT,
@@ -19,6 +24,7 @@ class _FtpConnector:
         )
 
     def connect(self, hostname: str, port: int, username: str, password: str):
+        self._reset()
         self.connect_status = self.ftp_server.connect(hostname, port)
         logger.info(f"FTP connect  to {hostname}: {self.connect_status}")
         self.login_status = self.ftp_server.login(username, password)
@@ -34,6 +40,7 @@ class _FtpConnector:
             return True
         except Exception as e:
             logger.error(f"FTP write to {file_path} failed. Error: {e}")
+            self._try_connect()
             return False
 
     def download_file(self, file_path: str, file: BinaryIO) -> bool:
@@ -43,6 +50,7 @@ class _FtpConnector:
             return True
         except Exception as e:
             logger.error(f"FTP download {file_path} failed. Error: {e}")
+            self._try_connect()
             return False
 
     def mkdir(self, dir_path: str) -> bool:
@@ -55,6 +63,7 @@ class _FtpConnector:
             logger.info(
                 f"Creating {dir_path} failed! Please restart program... FTP error: {e}. "
             )
+            self._try_connect()
             return False
 
     def cwd(self, path: str) -> bool:
@@ -67,6 +76,7 @@ class _FtpConnector:
         except Exception as e:
             logger.error(e)
             self.ftp_server.cwd(current_dir)
+            self._try_connect()
             return False
 
     def is_dir_existed(self, path: str) -> bool:
@@ -80,6 +90,7 @@ class _FtpConnector:
         except Exception as e:
             logger.error(e)
             self.ftp_server.cwd(current_dir)
+            self._try_connect()
             return False
 
     def close(self):

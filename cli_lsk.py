@@ -169,7 +169,7 @@ async def async_main(task_type: DetectionTaskType):
         return
     input_params: DetectionInputParam = DetectionInputParam(
         **pre_param_conf.model_dump(),
-        input_files=[""],
+        input_file=[""],
     )
     extra_mesg = ""
     # counter = 0
@@ -212,7 +212,7 @@ async def async_main(task_type: DetectionTaskType):
             if not pre_param_conf:
                 return
             input_param_no_file_dict = {
-                k: v for k, v in input_param_dict.items() if k != "input_files"
+                k: v for k, v in input_param_dict.items() if k != "input_file"
             }
 
             new_params_cnt = len(
@@ -321,8 +321,8 @@ async def async_main(task_type: DetectionTaskType):
                 await session.commit()
 
                 input_param_dict = parse_param_dict(t.task_param)
-                if "input_files" not in input_param_dict:
-                    await _update_task("<input_files> field is requried!")
+                if "input_file" not in input_param_dict:
+                    await _update_task("<input_file> field is requried!")
                     continue
 
                 _update_param(input_param_dict)
@@ -332,9 +332,9 @@ async def async_main(task_type: DetectionTaskType):
                 await session.commit()
                 detect_results = []
                 detection_history: List[List[List[BoxDetect]]] = [[]] * len(
-                    input_params.input_files
+                    input_params.input_file
                 )
-                for im_th, image_path in enumerate(input_params.input_files):
+                for im_th, image_path in enumerate(input_params.input_file):
                     image_id = image_path
                     _, success = await _process_image(image_path)
                     if not success:
@@ -433,11 +433,11 @@ async def async_main(task_type: DetectionTaskType):
                                     cate_name = str(class_id)
                             else:
                                 try:
-                                    ship_id = classify_ship(p)
-                                    cate_name = SHIP_LABELS[ship_id]
+                                    cate_name = classify_ship(p)
+                                    # cate_name = SHIP_LABELS[ship_id]
                                 except:
                                     extra_mesg += "Classify ship failed!"
-                                    cate_name = DetectionTaskType.SHIP.value
+                                    cate_name = str(DetectionTaskType.SHIP.value)
 
                             image_detect_results.append(
                                 ExtractedObject(
@@ -450,7 +450,7 @@ async def async_main(task_type: DetectionTaskType):
                             )
 
                             box_dect = BoxDetect(
-                                im_id, *output[box_i, :4], *c[:5], class_id, output[box_i, -1]  # type: ignore
+                                im_id, *(output[box_i, :4].tolist()), *(c[:5].tolist()), class_id, float(output[box_i, -1])  # type: ignore
                             )
                             box_dect.im_path = patch_lb_path
                             detection_history[im_th][class_id].append(box_dect)
@@ -488,7 +488,7 @@ async def async_main(task_type: DetectionTaskType):
                     valid_records = [
                         r
                         for r in records
-                        if len(r.longest_sequence) / num_images
+                        if len(r.longest_history) / num_images
                         > input_params.consecutive_thr
                     ]
                     dict.update(final_output, {"movement": valid_records})
@@ -520,9 +520,8 @@ async def async_main(task_type: DetectionTaskType):
                     valid_records = [r for r in records if r.max_start_i > 0]
                     dict.update(final_output, {"military": valid_records})
 
-                if task_type == DetectionTaskType.MILITARY:
-                    pass
-                t.task_output = json.dumps(final_output)
+                if task_type == DetectionTaskType.SHIP:
+                    t.task_output = json.dumps(image_detect_results)
                 t.task_stat = 1
                 t.task_message = "\n".join(["Successfully", extra_mesg])
                 if os.path.isfile(tmp_im_path):
