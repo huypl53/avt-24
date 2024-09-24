@@ -340,7 +340,7 @@ if __name__ == "__main__":
         [Box(*box[1:-1], math.degrees(box[-1])) for box in im_coord]
         for im_coord in images_coords
     ]
-    records = []
+    records: List[BoxRecord] = []
 
     num_im = len(images_boxes)
     for s in range(num_im - 1):
@@ -372,7 +372,7 @@ if __name__ == "__main__":
     log = dict()
     log.update({"records": records})
     # pprint(records)
-    new_records = [r for r in records if r.max_start_i > 0]
+    new_records = [r for r in records if None in r.records]
     change_records = [r for r in records if len(r.longest_history) / num_im]
 
     # pprint(f"New records: {new_records}")
