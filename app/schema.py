@@ -72,6 +72,9 @@ class DetectionParam(IOParam):
 
     # DetectionTaskType.change
     consecutive_thr: Optional[float] = None  #
+    translation_threshold: Optional[float] = None
+    rotation_threshold: Optional[float] = None
+    iou: Optional[float] = None
 
 
 class DetectionInputParam(DetectionParam):

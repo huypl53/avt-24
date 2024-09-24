@@ -31,25 +31,23 @@ class BoxRecord(dict):
         self.start_step = start_step
         self.longest_sequence: List[Box] = []
         self.max_start_i, self.max_end_i = 0, 0
+        self.first_cluster_elem: List[Box] = []
         self.__update()
 
-    def check_new_target(self, target: "Box", step: int, save=True) -> bool:
+    def check_new_target(self, target: "Box", step: int, save=True, **kwargs) -> bool:
         _last_record = self.last_record
-        # if self.last_step == 0 or step > self.last_step:
-        #     self.last_step = step
         if not _last_record:
             if save:
                 self.records[self.last_step] = target
-            if self.last_step == 0 or step > self.last_step:
                 self.last_step = step
             return True
-        movement = Box.detect_movement(_last_record, target)
+        movement = Box.detect_movement(_last_record, target, **kwargs)
         if not movement:
             return False
-        # self.last_record.went_by = True
         if save:
             self.history[step - 1] = movement
             self.records[step] = target
+            self.last_step = step
         return True
 
     def __update(self):
@@ -65,18 +63,37 @@ class BoxRecord(dict):
     def update_longest_sequence(self):
         valid_idx = [i for i, r in enumerate(self.records) if r is not None]
         num_valid_records = len(valid_idx)
+
+        is_new_cluster = True
+        self.first_cluster_elem = []
+        for i in range(len(self.history)):
+            hist = self.history[i]
+            record = self.records[i]
+            if hist:
+                if is_new_cluster:
+                    self.first_cluster_elem.append(record)
+                    is_new_cluster = False
+            else:
+                is_new_cluster = True
+                if record:
+                    self.first_cluster_elem.append(record)
+        if self.history[-1] is None and self.records[-1]:
+            self.first_cluster_elem.append(self.records[-1])
+
         if num_valid_records == 0:
             self.max_start_i = 0
             self.max_end_i = 0
             self.longest_sequence = []
             self.longest_history = []
+            self.__update()
             return
         elif num_valid_records == 1:
             start_i = valid_idx[0]
             self.max_start_i = start_i
             self.max_end_i = start_i + 1
             self.longest_sequence = [self.records[start_i]]
-            self.longest_history = [self.history[start_i]]
+            self.longest_history = []
+            self.__update()
             return
         start_i, max_start_i = 0, 0
         max_len = 0
@@ -92,6 +109,7 @@ class BoxRecord(dict):
                 current_len = 0
                 start_i = i + 1
         if max_len < 1:
+            self.__update()
             return
         max_end_i = max_start_i + max_len + 1
         self.max_start_i = max_start_i
@@ -130,7 +148,9 @@ class Box(dict):
     def box(self):
         return (self.x, self.y, self.w, self.h, self.angle)
 
-    def is_moved(self, target: "Box"):
+    def is_moved(
+        self, target: "Box", translation_threshold=3, rotation_threshold=3, iou=0.12
+    ):
         """Check if box moved to target
         Args:
             target (BoxDetect | Iterable[Union[ float, int ]]): has same shape as self
@@ -138,7 +158,11 @@ class Box(dict):
             _type_: _description_
         """
         movements = detect_list_roatated_movement(
-            [self], [target], translation_threshold=3, rotation_threshold=3, iou=0.12
+            [self],
+            [target],
+            translation_threshold=translation_threshold,
+            rotation_threshold=rotation_threshold,
+            iou=iou,
         )
         if len(movements):
             return movements[0]
@@ -146,8 +170,8 @@ class Box(dict):
             return None
 
     @staticmethod
-    def detect_movement(box1: "Box", box2: "Box"):
-        return box1.is_moved(box2)
+    def detect_movement(box1: "Box", box2: "Box", **kwargs):
+        return box1.is_moved(box2, **kwargs)
 
     def update(self):
         self.__update()
@@ -219,7 +243,7 @@ class BoxDetect(Box):
             },
         )
 
-    def is_moved(self, target: "BoxDetect"):
+    def is_moved(self, target: "BoxDetect", **kwargs):
         """Check if box moved to target
         Args:
             target (BoxDetect | Iterable[Union[ float, int ]]): has same shape as self
@@ -228,7 +252,7 @@ class BoxDetect(Box):
         """
         if self.cls_name != target.cls_name:
             return None
-        return super().is_moved(target)
+        return super().is_moved(target, **kwargs)
 
 
 def rotated_iou(box1, box2):
@@ -358,7 +382,13 @@ if __name__ == "__main__":
                 for next_box in images_boxes[n_s]:
                     if next_box.went_by:
                         continue
-                    next_moved = record.check_new_target(next_box, n_s)
+                    next_moved = record.check_new_target(
+                        next_box,
+                        n_s,
+                        translation_threshold=3,
+                        rotation_threshold=3,
+                        iou=0.12,
+                    )
                     if next_moved:
                         next_box.went_by = True
                         next_box.update()
@@ -372,7 +402,7 @@ if __name__ == "__main__":
     log = dict()
     log.update({"records": records})
     # pprint(records)
-    new_records = [r for r in records if None in r.records]
+    new_records = [r for r in records if len(r.first_cluster_elem)]
     change_records = [r for r in records if len(r.longest_history) / num_im]
 
     # pprint(f"New records: {new_records}")
