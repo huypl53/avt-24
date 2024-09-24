@@ -331,9 +331,9 @@ async def async_main(task_type: DetectionTaskType):
                 t.task_param = input_params.model_dump_json(exclude_none=True)
                 await session.commit()
                 detect_results = []
-                detection_history: List[List[List[BoxDetect]]] = [[]] * len(
-                    input_params.input_file
-                )
+                detection_history: List[List[List[BoxDetect]]] = [
+                    [] for _ in range(len(input_params.input_file))
+                ]
                 for im_th, image_path in enumerate(input_params.input_file):
                     image_id = image_path
                     _, success = await _process_image(image_path)
@@ -346,7 +346,6 @@ async def async_main(task_type: DetectionTaskType):
                         # await _update_task("No detection", 1)
                         continue
 
-                    # detection_history[im_th] = classes_results
                     # TODO: handle score thresh
                     # classes_results = np.array(classes_results)
                     image_detect_results: List[Dict] = []
