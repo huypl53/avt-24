@@ -17,7 +17,7 @@ git clone --depth 1 --branch main --single-branch https://github.com/huypl53/LSK
 
 ```bash
 # docker pull pytorch/pytorch:1.11.0-cuda11.3-cudnn8-runtime
-docker compose -f docker/lsk/docker-compose.yml up
+docker compose -f docker/lsk/lsk.yml up
 ```
 
 ### Militia object detection
