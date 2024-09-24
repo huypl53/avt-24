@@ -428,29 +428,37 @@ async def async_main(task_type: DetectionTaskType):
 
                             if task_type != DetectionTaskType.SHIP:
                                 if class_id in ObjectCategory:
-                                    cate_name = ObjectCategory[class_id]
+                                    cls_name = ObjectCategory[class_id]
                                 else:
-                                    cate_name = str(class_id)
+                                    cls_name = str(class_id)
                             else:
                                 try:
-                                    cate_name = classify_ship(p)
+                                    cls_name = classify_ship(p)
                                     # cate_name = SHIP_LABELS[ship_id]
                                 except:
                                     extra_mesg += "Classify ship failed!"
-                                    cate_name = str(DetectionTaskType.SHIP.value)
+                                    cls_name = str(DetectionTaskType.SHIP.value)
 
                             image_detect_results.append(
                                 ExtractedObject(
-                                    id=im_id,
+                                    id=f"{im_th:03d}-{im_id}",
                                     path=patch_im_path,
                                     coords=coords,
                                     lb_path=patch_lb_path,
-                                    class_id=cate_name,
+                                    class_id=cls_name,
                                 ).model_dump()
                             )
 
                             box_dect = BoxDetect(
-                                im_id, *(output[box_i, :4].tolist()), *(c[:5].tolist()), class_id, float(output[box_i, -1])  # type: ignore
+                                im_id,
+                                *(output[box_i, :4].tolist()),
+                                *(c[:5].tolist()),
+                                patch_im_path,
+                                patch_lb_path,
+                                cls_name,
+                                float(
+                                    output[box_i, -1],
+                                ),  # type: ignore
                             )
                             box_dect.im_path = patch_lb_path
                             detection_history[im_th][class_id].append(box_dect)
@@ -459,7 +467,7 @@ async def async_main(task_type: DetectionTaskType):
                     detect_results.append(
                         {"image_id": image_id, "detections": image_detect_results}
                     )
-                final_output = dict({"detect_results": detect_results})
+                final_output = dict({"detected_objects": detect_results})
                 if task_type == DetectionTaskType.CHANGE:
                     num_images = len(detection_history)
                     num_cls = len(detection_history[0])
@@ -468,30 +476,43 @@ async def async_main(task_type: DetectionTaskType):
                         for im_i in range(num_images - 1):
                             current_cls_box_dets = detection_history[im_i][cls_i]
                             for current_box_det in current_cls_box_dets:
+                                if current_box_det.went_by:
+                                    continue
                                 new_record = BoxRecord(
                                     cate_id=cls_i, steps_num=num_images, start_step=im_i
                                 )
-                                new_record.check_new_target(
+                                r = new_record.check_new_target(
                                     current_box_det, step=im_i, save=True
                                 )
+                                if r:
+                                    current_box_det.went_by = True
                                 for next_im_i in range(im_i + 1, num_images):
                                     next_cls_box_dets = detection_history[next_im_i][
                                         cls_i
                                     ]
                                     for next_box_det in next_cls_box_dets:
-                                        new_record.check_new_target(
+                                        if next_box_det.went_by:
+                                            continue
+                                        r = new_record.check_new_target(
                                             next_box_det, step=next_im_i, save=True
                                         )
+                                        if r:
+                                            next_box_det.went_by = True
                                 new_record.update_longest_sequence()
                                 records.append(new_record)
 
-                    valid_records = [
-                        r
-                        for r in records
-                        if len(r.longest_history) / num_images
-                        > input_params.consecutive_thr
-                    ]
-                    dict.update(final_output, {"movement": valid_records})
+                    valid_records = []
+                    if input_params.consecutive_thr:
+                        valid_records = [
+                            r
+                            for r in records
+                            if len(r.longest_history) / num_images
+                            > input_params.consecutive_thr
+                        ]
+                        changes = [
+                            [v for v in r.longest_sequence] for r in valid_records
+                        ]
+                    dict.update(final_output, {"changes": changes})
                 if task_type == DetectionTaskType.MILITARY:
                     num_images = len(detection_history)
                     num_cls = len(detection_history[0])
@@ -500,28 +521,41 @@ async def async_main(task_type: DetectionTaskType):
                         for im_i in range(num_images - 1):
                             current_cls_box_dets = detection_history[im_i][cls_i]
                             for current_box_det in current_cls_box_dets:
+                                if current_box_det.went_by:
+                                    continue
                                 new_record = BoxRecord(
                                     cate_id=cls_i, steps_num=num_images, start_step=im_i
                                 )
-                                new_record.check_new_target(
+                                r = new_record.check_new_target(
                                     current_box_det, step=im_i, save=True
                                 )
+                                if r:
+                                    current_box_det.went_by = True
                                 for next_im_i in range(im_i + 1, num_images):
                                     next_cls_box_dets = detection_history[next_im_i][
                                         cls_i
                                     ]
                                     for next_box_det in next_cls_box_dets:
-                                        new_record.check_new_target(
+                                        if next_box_det.went_by:
+                                            continue
+                                        r = new_record.check_new_target(
                                             next_box_det, step=next_im_i, save=True
                                         )
+                                        if r:
+                                            next_box_det.went_by = True
                                 new_record.update_longest_sequence()
                                 records.append(new_record)
 
                     valid_records = [r for r in records if r.max_start_i > 0]
-                    dict.update(final_output, {"military": valid_records})
+                    new_boxes = [r.last_record for r in valid_records if r.last_record]
+                    dict.update(final_output, {"suspicious_objects": new_boxes})
+                    t.task_output = json.dumps(final_output)
 
                 if task_type == DetectionTaskType.SHIP:
-                    t.task_output = json.dumps(image_detect_results)
+                    images_ship_results = [
+                        image_result["detections"] for image_result in detect_results
+                    ]
+                    t.task_output = json.dumps(images_ship_results)
                 t.task_stat = 1
                 t.task_message = "\n".join(["Successfully", extra_mesg])
                 if os.path.isfile(tmp_im_path):
