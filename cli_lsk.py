@@ -467,8 +467,8 @@ async def async_main(task_type: DetectionTaskType):
                     detect_results.append(
                         {"image_id": image_id, "detections": image_detect_results}
                     )
-                final_output = dict({"detected_objects": detect_results})
-                if task_type == DetectionTaskType.CHANGE:
+                final_output = dict({"detect_results": detect_results})
+                if task_type in [DetectionTaskType.CHANGE, DetectionTaskType.MILITARY]:
                     num_images = len(detection_history)
                     num_cls = len(detection_history[0])
                     records: List[BoxRecord] = []
@@ -481,11 +481,12 @@ async def async_main(task_type: DetectionTaskType):
                                 new_record = BoxRecord(
                                     cate_id=cls_i, steps_num=num_images, start_step=im_i
                                 )
-                                r = new_record.check_new_target(
+                                checked = new_record.check_new_target(
                                     current_box_det, step=im_i, save=True
                                 )
-                                if r:
+                                if checked:
                                     current_box_det.went_by = True
+                                    current_box_det.update()
                                 for next_im_i in range(im_i + 1, num_images):
                                     next_cls_box_dets = detection_history[next_im_i][
                                         cls_i
@@ -493,63 +494,35 @@ async def async_main(task_type: DetectionTaskType):
                                     for next_box_det in next_cls_box_dets:
                                         if next_box_det.went_by:
                                             continue
-                                        r = new_record.check_new_target(
+                                        next_moved = new_record.check_new_target(
                                             next_box_det, step=next_im_i, save=True
                                         )
-                                        if r:
+                                        if next_moved:
                                             next_box_det.went_by = True
+                                            next_box_det.update()
                                 new_record.update_longest_sequence()
                                 records.append(new_record)
 
-                    valid_records = []
-                    if input_params.consecutive_thr:
+                    if task_type == DetectionTaskType.change:
                         valid_records = [
                             r
                             for r in records
                             if len(r.longest_history) / num_images
                             > input_params.consecutive_thr
                         ]
-                        changes = [
-                            [v for v in r.longest_sequence] for r in valid_records
+                        rbboxes = [
+                            bbox.box for r in records for bbox in r.longest_sequence
                         ]
-                    dict.update(final_output, {"changes": changes})
-                if task_type == DetectionTaskType.MILITARY:
-                    num_images = len(detection_history)
-                    num_cls = len(detection_history[0])
-                    records: List[BoxRecord] = []
-                    for cls_i in range(num_cls):
-                        for im_i in range(num_images - 1):
-                            current_cls_box_dets = detection_history[im_i][cls_i]
-                            for current_box_det in current_cls_box_dets:
-                                if current_box_det.went_by:
-                                    continue
-                                new_record = BoxRecord(
-                                    cate_id=cls_i, steps_num=num_images, start_step=im_i
-                                )
-                                r = new_record.check_new_target(
-                                    current_box_det, step=im_i, save=True
-                                )
-                                if r:
-                                    current_box_det.went_by = True
-                                for next_im_i in range(im_i + 1, num_images):
-                                    next_cls_box_dets = detection_history[next_im_i][
-                                        cls_i
-                                    ]
-                                    for next_box_det in next_cls_box_dets:
-                                        if next_box_det.went_by:
-                                            continue
-                                        r = new_record.check_new_target(
-                                            next_box_det, step=next_im_i, save=True
-                                        )
-                                        if r:
-                                            next_box_det.went_by = True
-                                new_record.update_longest_sequence()
-                                records.append(new_record)
+                        dict.update(final_output, {"movement": rbboxes})
+                    if task_type == DetectionTaskType.MILITARY:
 
-                    valid_records = [r for r in records if r.max_start_i > 0]
-                    new_boxes = [r.last_record for r in valid_records if r.last_record]
-                    dict.update(final_output, {"suspicious_objects": new_boxes})
-                    t.task_output = json.dumps(final_output)
+                        valid_records = [
+                            r for r in records if len(r.first_cluster_elem)
+                        ]
+                        rbboxes = [
+                            bbox.box for r in records for bbox in r.first_cluster_elem
+                        ]
+                        dict.update(final_output, {"military": valid_records})
 
                 if task_type == DetectionTaskType.SHIP:
                     images_ship_results = [

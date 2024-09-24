@@ -1,3 +1,4 @@
+import math
 from typing import List
 
 import cv2
@@ -30,22 +31,23 @@ class BoxRecord(dict):
         self.start_step = start_step
         self.longest_sequence: List[Box] = []
         self.max_start_i, self.max_end_i = 0, 0
+        self.first_cluster_elem: List[Box] = []
         self.__update()
 
-    def check_new_target(self, target: "Box", step: int, save=True) -> bool:
-        if self.last_step == 0 or step > self.last_step:
-            self.last_step = step
-        if not self.last_record:
+    def check_new_target(self, target: "Box", step: int, save=True, **kwargs) -> bool:
+        _last_record = self.last_record
+        if not _last_record:
             if save:
-                self.records[step] = target
+                self.records[self.last_step] = target
+                self.last_step = step
             return True
-        movement = Box.detect_movement(self.last_record, target)
+        movement = Box.detect_movement(_last_record, target, **kwargs)
         if not movement:
             return False
-        # self.last_record.went_by = True
         if save:
             self.history[step - 1] = movement
             self.records[step] = target
+            self.last_step = step
         return True
 
     def __update(self):
@@ -59,20 +61,46 @@ class BoxRecord(dict):
             return None
 
     def update_longest_sequence(self):
-        valid_records = [r for r in self.records if r is not None]
-        num_valid_records = len(valid_records)
+        valid_idx = [i for i, r in enumerate(self.records) if r is not None]
+        num_valid_records = len(valid_idx)
+
+        is_new_cluster = True
+        self.first_cluster_elem = []
+        for i in range(len(self.history)):
+            hist = self.history[i]
+            record = self.records[i]
+            if hist:
+                if is_new_cluster:
+                    self.first_cluster_elem.append(record)
+                    is_new_cluster = False
+            else:
+                is_new_cluster = True
+                if record:
+                    self.first_cluster_elem.append(record)
+        if self.history[-1] is None and self.records[-1]:
+            self.first_cluster_elem.append(self.records[-1])
+
         if num_valid_records == 0:
+            self.max_start_i = 0
+            self.max_end_i = 0
+            self.longest_sequence = []
+            self.longest_history = []
+            self.__update()
             return
         elif num_valid_records == 1:
-            self.max_start_i = 0
-            self.max_end_i = 1
+            start_i = valid_idx[0]
+            self.max_start_i = start_i
+            self.max_end_i = start_i + 1
+            self.longest_sequence = [self.records[start_i]]
+            self.longest_history = []
+            self.__update()
             return
         start_i, max_start_i = 0, 0
         max_len = 0
         current_len = 0
-        for i in range(self.steps_num):
-            record = self.records[i]
-            if record is not None:
+        for i in range(len(self.history)):
+            hist = self.history[i]
+            if hist is not None:
                 current_len += 1
                 if current_len > max_len:
                     max_len = current_len
@@ -80,9 +108,10 @@ class BoxRecord(dict):
             else:
                 current_len = 0
                 start_i = i + 1
-        max_end_i = max_start_i + max_len
         if max_len < 1:
+            self.__update()
             return
+        max_end_i = max_start_i + max_len + 1
         self.max_start_i = max_start_i
         self.max_end_i = max_end_i
         self.longest_sequence = [r for r in self.records[max_start_i:max_end_i] if r]
@@ -119,7 +148,9 @@ class Box(dict):
     def box(self):
         return (self.x, self.y, self.w, self.h, self.angle)
 
-    def is_moved(self, target: "Box"):
+    def is_moved(
+        self, target: "Box", translation_threshold=3, rotation_threshold=3, iou=0.12
+    ):
         """Check if box moved to target
         Args:
             target (BoxDetect | Iterable[Union[ float, int ]]): has same shape as self
@@ -127,7 +158,11 @@ class Box(dict):
             _type_: _description_
         """
         movements = detect_list_roatated_movement(
-            [self], [target], translation_threshold=25, rotation_threshold=7
+            [self],
+            [target],
+            translation_threshold=translation_threshold,
+            rotation_threshold=rotation_threshold,
+            iou=iou,
         )
         if len(movements):
             return movements[0]
@@ -135,8 +170,14 @@ class Box(dict):
             return None
 
     @staticmethod
-    def detect_movement(box1: "Box", box2: "Box"):
-        return box1.is_moved(box2)
+    def detect_movement(box1: "Box", box2: "Box", **kwargs):
+        return box1.is_moved(box2, **kwargs)
+
+    def update(self):
+        self.__update()
+
+    def __update(self):
+        dict.update(self, self.__dict__)
 
 
 class BoxDetect(Box):
@@ -202,7 +243,7 @@ class BoxDetect(Box):
             },
         )
 
-    def is_moved(self, target: "BoxDetect"):
+    def is_moved(self, target: "BoxDetect", **kwargs):
         """Check if box moved to target
         Args:
             target (BoxDetect | Iterable[Union[ float, int ]]): has same shape as self
@@ -211,7 +252,7 @@ class BoxDetect(Box):
         """
         if self.cls_name != target.cls_name:
             return None
-        return super().is_moved(target)
+        return super().is_moved(target, **kwargs)
 
 
 def rotated_iou(box1, box2):
@@ -237,7 +278,7 @@ def detect_list_roatated_movement(
     box_results2: List[Box],
     translation_threshold=10,
     rotation_threshold=5,
-    iou=0.6,
+    iou=0.3,
 ):
     """Check if 2 list of rbboxes 2 x  has movement
     Args:
@@ -283,77 +324,99 @@ def calc_roatated_movement(box1, box2):
 
 
 if __name__ == "__main__":
-    # id, xc, yc, w, h, angle
+    # id, xc, yc, w, h, angle: rad
     images_coords = [
         [
-            [0, 4914.7088, 3698.6853, 79.0204, 12.7648, 0.68],
-            [0, 4898.7088, 3716.6853, 79.0204, 12.7648, 0.68],
-            [0, 4511.8, 4043.5, 8.0, 33.0, 0.0],
-            [0, 4485.4307, 4447.8228, 17.0408, 77.7743, 3.051593],
-            [0, 3457.4737, 4084.2935, 10.9474, 67.2024, 0.0],
-            [0, 4892.5156, 3725.7732, 72.9214, 12.0875, 0.68],
-        ],
-        [
-            [0, 4905.7088, 3706.6853, 79.0204, 12.7648, 0.68],
-            [0, 4892.5156, 3725.7732, 72.9214, 12.0875, 0.68],
-            [0, 4884.6667, 3735.5, 70.0, 13.0, 0.68],
-            [0, 4510.9, 4039.3462, 15.8, 55.3077, 0.0],
-            [0, 4480.4307, 4451.8228, 17.0408, 77.7743, 3.021593],
-            [0, 3453.4737, 4075.2935, 10.9474, 67.2024, 3.101593],
-        ],
-        [
-            [0, 4511.8, 4043.5, 8.0, 33.0, 0.0],
-            [0, 4510.9, 4039.3462, 15.8, 55.3077, 0.0],
-            [0, 4476.4307, 4461.8228, 17.0408, 77.7743, 3.021593],
-            [0, 3448.4737, 4069.2935, 10.9474, 67.2024, 3.051593],
-            [0, 4480.4307, 4451.8228, 17.0408, 77.7743, 3.021593],
-        ],
-        [
-            [0, 3453.4737, 4075.2935, 10.9474, 67.2024, 3.101593],
-            [0, 4853.1667, 4464.5, 15.0, 69.0, 2.841593],
+            [0, 3441.4737, 4054.2935, 10.9474, 67.2024, 2.871593],
             [0, 4470.4307, 4464.8228, 17.0408, 77.7743, 3.021593],
-            [0, 3444.4737, 4065.2935, 10.9474, 67.2024, 2.971593],
-            [0, 4510.9, 4039.3462, 15.8, 55.3077, 0.0],
+            [],
+            [],
+            [],
         ],
         [
-            [0, 4892.5156, 3725.7732, 72.9214, 12.0875, 0.68],
-            [0, 4839.1667, 4410.5, 15.0, 69.0, 0.0],
             [0, 3441.4737, 4058.2935, 10.9474, 67.2024, 2.931593],
-            [0, 4914.7088, 3698.6853, 79.0204, 12.7648, 0.68],
             [0, 4476.4307, 4461.8228, 17.0408, 77.7743, 3.021593],
+            [0, 4510.9, 4039.3462, 15.8, 55.3077, 0.0],
+            [0, 4884.6667, 3735.5, 70.0, 13.0, 0.68],
+            [],
+        ],
+        [
+            [0, 3444.4737, 4065.2935, 10.9474, 67.2024, 2.971593],
+            [0, 4480.4307, 4451.8228, 17.0408, 77.7743, 3.021593],
+            [0, 4511.8, 4043.5, 8.0, 33.0, 0.0],
+            [0, 4831.1667, 4356.5, 15.0, 69.0, 0.0],
+            [0, 4892.5156, 3725.7732, 72.9214, 12.0875, 0.68],
+        ],
+        [
+            [0, 3448.4737, 4069.2935, 10.9474, 67.2024, 3.051593],
+            [0, 4485.4307, 4447.8228, 17.0408, 77.7743, 3.051593],
+            [],
+            [0, 4839.1667, 4410.5, 15.0, 69.0, 0.0],
+            [0, 4898.7088, 3716.6853, 79.0204, 12.7648, 0.68],
+        ],
+        [
+            [0, 3453.4737, 4075.2935, 10.9474, 67.2024, 3.101593],
+            [],
+            [],
+            [0, 4853.1667, 4464.5, 15.0, 69.0, 2.841593],
+            [0, 4905.7088, 3706.6853, 79.0204, 12.7648, 0.68],
+        ],
+        [
+            [0, 3457.4737, 4084.2935, 10.9474, 67.2024, 0.0],
+            [],
+            [],
+            [],
+            [0, 4914.7088, 3698.6853, 79.0204, 12.7648, 0.68],
         ],
     ]
 
-    images_boxes = [[Box(*box[1:]) for box in im_coord] for im_coord in images_coords]
-    records = []
+    images_boxes = [
+        [Box(*box[1:-1], math.degrees(box[-1])) for box in im_coord if len(box)]
+        for im_coord in images_coords
+    ]
+    records: List[BoxRecord] = []
 
     num_im = len(images_boxes)
-    for s, im_boxes in enumerate(images_boxes[:-1]):
+    for s in range(num_im - 1):
+        im_boxes = images_boxes[s]
         for box in im_boxes:
             if box.went_by:
                 continue
             record = BoxRecord(0, num_im, s)
-            record.check_new_target(box, s)
-            box.went_by = True
-            for n_s, next_box in enumerate(im_boxes[s + 1 :]):
-                record.check_new_target(next_box, n_s)
-                next_box.went_by = True
+            checked = record.check_new_target(box, s)
+            if checked:
+                box.went_by = True
+                box.update()
 
+            for n_s in range(s + 1, num_im):
+                for next_box in images_boxes[n_s]:
+                    if next_box.went_by:
+                        continue
+                    next_moved = record.check_new_target(
+                        next_box,
+                        n_s,
+                        translation_threshold=3,
+                        rotation_threshold=3,
+                        iou=0.12,
+                    )
+                    if next_moved:
+                        next_box.went_by = True
+                        next_box.update()
+
+            record.update_longest_sequence()
             records.append(record)
 
-    from pprint import pprint
+    # from pprint import pprint
+    import json
 
-    pprint(records)
-    new_records = [r for r in records if r.max_start_i > 0]
+    log = dict()
+    log.update({"records": records})
+    # pprint(records)
+    new_records = [r for r in records if len(r.first_cluster_elem)]
     change_records = [r for r in records if len(r.longest_history) / num_im]
 
-    pprint(f"New records: {new_records}")
-    pprint(f"Change records: {change_records}")
-    # movements = detect_list_roatated_movement(boxes_image1, boxes_image2)
-    # if movements:
-    #     for i, j, displacement, rotation_diff in movements:
-    #         print(
-    #             f"Object {i} in image 1 moved to position {j} in image 2 with displacement {displacement:.2f} and rotation change {rotation_diff:.2f} degrees"
-    #         )
-    # else:
-    #     print("No significant movements detected.")
+    # pprint(f"New records: {new_records}")
+    # pprint(f"Change records: {change_records}")
+    log.update({"New records": new_records})
+    log.update({"Change records": change_records})
+    json.dump(log, open("./demo_box_record.json", "w"), indent=4)

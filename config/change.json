@@ -8,5 +8,8 @@
   "patch_steps": [824],
   "img_ratios": [1],
   "merge_iou_thr": 0.1,
-  "consecutive_thr": 0.3
+  "consecutive_thr": 0.2,
+  "translation_threshold": 3,
+  "rotation_threshold": 3,
+  "iou": 0.12
 }
