@@ -503,13 +503,15 @@ async def async_main(task_type: DetectionTaskType):
                                 new_record.update_longest_sequence()
                                 records.append(new_record)
 
-                    if task_type == DetectionTaskType.change:
-                        valid_records = [
-                            r
-                            for r in records
-                            if len(r.longest_history) / num_images
-                            > input_params.consecutive_thr
-                        ]
+                    if task_type == DetectionTaskType.CHANGE:
+                        valid_records = []
+                        if input_params.consecutive_thr is not None:
+                            valid_records = [
+                                r
+                                for r in records
+                                if len(r.longest_history) / num_images
+                                > input_params.consecutive_thr
+                            ]
                         rbboxes = [
                             bbox.box for r in records for bbox in r.longest_sequence
                         ]
