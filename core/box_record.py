@@ -1,8 +1,11 @@
+import abc
 import math
 from typing import List
 
 import cv2
 import numpy as np
+
+from app.schema import ExtractedObject
 
 
 class Movement(dict):
@@ -71,7 +74,8 @@ class BoxRecord(dict):
             record = self.records[i]
             if hist:
                 if is_new_cluster:
-                    self.first_cluster_elem.append(record)
+                    if record:
+                        self.first_cluster_elem.append(record)
                     is_new_cluster = False
             else:
                 is_new_cluster = True
@@ -179,6 +183,10 @@ class Box(dict):
     def __update(self):
         dict.update(self, self.__dict__)
 
+    @abc.abstractmethod
+    def lat_lon_result(self):
+        pass
+
 
 class BoxDetect(Box):
     def __init__(
@@ -217,14 +225,20 @@ class BoxDetect(Box):
 
     @property
     def lat_lon_result(self):
-        return [
-            self.xl,
-            self.yl,
-            self.wm,
-            self.hm,
-            self.angle,
-            self.score,
-        ]
+        return ExtractedObject(
+            id=self._id,
+            path=self._im_path,
+            coords=[
+                self.xl,
+                self.yl,
+                self.wm,
+                self.hm,
+                self.angle,
+                self.score,
+            ],
+            lb_path=self.lb_path,
+            class_id=self.cls_name,
+        ).model_dump()
 
     @im_path.setter
     def im_path(self, v: str):
