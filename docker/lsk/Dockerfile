@@ -9,7 +9,7 @@ COPY ../../ /workspace/avt-detection/
 
 # TODO: check out commit at mmrotate
 RUN <<EOF
-    apt-get update --fix-missing && apt-get install -y wget vim git zip unzip build-essential libgl1-mesa-dev ffmpeg libsm6 libxext6 gdal-bin
+    apt-get update --fix-missing && apt-get install -y wget vim git zip unzip build-essential libgl1-mesa-dev ffmpeg libsm6 libxext6 gdal-bin libpq-dev
     conda update conda -y
     conda init bash
     conda create -n avt-detection python=3.10 -y
@@ -19,7 +19,7 @@ SHELL ["conda", "run", "-n", "avt-detection", "/bin/bash", "-c"]
 
 RUN <<EOF
     conda install pip=24.0 -y
-    conda install conda-forge::ninja=1.12.1
+    conda install conda-forge::ninja=1.12.1 -y
     pip install numpy==1.26.4
     pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
     pip install openmim

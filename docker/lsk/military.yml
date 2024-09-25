@@ -1,25 +1,8 @@
 version: "3.8"
 
 services:
-  lsknet_service:
-    build:
-      context: ../../
-      dockerfile: docker/lsk/Dockerfile
-    container_name: avt_detection
-    volumes:
-      - ../../:/workspace/avt-detection
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-
-    working_dir: /workspace/avt-detection
+  ship_service:
+    extends:
+      file: base.yml
+      service: lsknet_service
     command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type MILITARY"
-    # command: conda run -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py  --task_type ship > /dev/tty 2>&1"
-    # command: python cli_lsk.py --task_type CHANGE
-    # command: bash -c "tail -f /dev/null"
