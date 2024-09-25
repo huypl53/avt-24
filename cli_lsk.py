@@ -18,7 +18,7 @@ from sqlalchemy import Select, select, text
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.connector import AsyncSessionFactory, get_db, query_sync
+from app.db.connector import get_db
 from app.model.task import TaskMd
 from app.schema import (
     SHIP_LABELS,
@@ -91,13 +91,17 @@ def update_task_chronologically(
     start=2,
     step: int = 1,
 ):
-    async def run():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    async def run(stop_event):
         query = text(
             f"SELECT * FROM public.avt_task where task_type = {task_type} and id = {task_id}"
         )
         session = db_session
         if not session:
-            session = AsyncSessionFactory()
+            a_session = anext(get_db())
+            session = await a_session
 
         try:
             results = await session.execute(query)
@@ -128,8 +132,10 @@ def update_task_chronologically(
             # await session.commit()
             await session.close()
 
-    # return run
-    asyncio.run(run())
+    # asyncio.run(run())
+    loop.run_until_complete(run(stop_event))
+
+    loop.close()
 
 
 async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
@@ -178,6 +184,7 @@ async def async_main(task_type: DetectionTaskType):
         # counter += 1
         a_session = anext(get_db())
         session = await a_session
+        # session = await AsyncSessionFactory()
         stmt_task = (
             select(TaskMd)
             # .where(TaskMd.id == task_id)
@@ -561,12 +568,12 @@ async def async_main(task_type: DetectionTaskType):
         finally:
             if stop_event:
                 stop_event.set()
-
-            await asyncio.sleep(2)
-            await session.commit()
             if update_process:
                 update_process.terminate()
                 update_process.join()
+
+            await asyncio.sleep(2)
+            await session.commit()
 
         print("----------")
         await asyncio.sleep(3)
