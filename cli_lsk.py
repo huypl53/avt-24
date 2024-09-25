@@ -87,41 +87,49 @@ def update_task_chronologically(
     task_id: int,
     stop_event,
     task_type: int,
-    # db_session: AsyncSession | None = None,
+    db_session: AsyncSession | None = None,
     start=2,
     step: int = 1,
 ):
-    fetch_task_query = f"SELECT * FROM public.avt_task where task_type = {task_type} and id = {task_id}"
-    
+    async def run():
+        query = text(
+            f"SELECT * FROM public.avt_task where task_type = {task_type} and id = {task_id}"
+        )
+        session = db_session
+        if not session:
+            session = AsyncSessionFactory()
 
-    try:
-
-        def query_tasks(cursor):
-            cursor.execute(fetch_task_query)
-            records = cursor.fetchall()
-            if not records or not len(records):
+        try:
+            results = await session.execute(query)
+            result = results.first()
+            if not result:
                 logger.warning(f"No task for Select: {task_id}")
                 return
-
-            for task in records:
-                # TODO: check i-th col
-                task_stat = task[6]
-                if task_stat is None or task_stat < 0:
-                    task_stat = start
-                while not stop_event.is_set():
-                    task_stat = task_stat + step
-                    cursor.execute(
+            task: TaskMd = result
+            if not task:
+                logger.warning(f"No task for Select: {task_id}")
+                return
+            task_stat = task.task_stat
+            if task_stat is None or task_stat < 0:
+                task_stat = start
+            while not stop_event.is_set():
+                task_stat = task_stat + step
+                await session.execute(
+                    text(
                         f"update public.avt_task set task_stat = {task_stat} where task_type = {task_type} and id = {task_id}"
                     )
-                    time.sleep(step)
+                )
+                await session.commit()
+                await asyncio.sleep(step)
+        except Exception as e:
+            logger.error(e)
+            logger.error(traceback.format_exc())
+        finally:
+            # await session.commit()
+            await session.close()
 
-        query_sync(query_tasks)
-    except Exception as e:
-        logger.error(e)
-        logger.error(traceback.format_exc())
-    finally:
-        # await session.commit()
-        pass
+    # return run
+    asyncio.run(run())
 
 
 async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
@@ -551,12 +559,14 @@ async def async_main(task_type: DetectionTaskType):
                     str(e),
                 )
         finally:
+            if stop_event:
+                stop_event.set()
+
+            await asyncio.sleep(2)
             await session.commit()
             if update_process:
                 update_process.terminate()
                 update_process.join()
-            if stop_event:
-                stop_event.set()
 
         print("----------")
         await asyncio.sleep(3)
