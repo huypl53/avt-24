@@ -1,20 +1,44 @@
 version: "3.8"
 
-# services:
-#   lsknet_service:
-build:
-  context: ../../
-  dockerfile: docker/lsk/Dockerfile
-volumes:
-  - ../../:/workspace/avt-detection
-environment:
-  - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
-deploy:
-  resources:
-    reservations:
-      devices:
-        - driver: nvidia
-          count: all
-          capabilities: [gpu]
+services:
+  lsknet_service:
+    build:
+      context: ../../
+      dockerfile: docker/lsk/Dockerfile
+    volumes:
+      - ../../:/workspace/avt-detection
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
-working_dir: /workspace/avt-detection
+    working_dir: /workspace/avt-detection
+
+  ship_service:
+    extends:
+      # file: base.yml
+      service: lsknet_service
+    container_name: avt_ship_detection
+    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type SHIP"
+    profiles: ["ship"]
+
+  change_service:
+    extends:
+      # file: base.yml
+      service: lsknet_service
+    container_name: avt_change_detection
+    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type CHANGE"
+    profiles: ["change"]
+
+  mulitary_service:
+    extends:
+      # file: base.yml
+      service: lsknet_service
+    container_name: avt_mulitary_detection
+    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type MILITARY"
+    profiles: ["mulitary"]
