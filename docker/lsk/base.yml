@@ -5,7 +5,6 @@ services:
     build:
       context: ../../
       dockerfile: docker/lsk/Dockerfile
-    container_name: avt_detection
     volumes:
       - ../../:/workspace/avt-detection
     environment:
