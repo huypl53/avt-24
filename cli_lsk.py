@@ -100,7 +100,7 @@ def update_task_chronologically(
         )
         session = db_session
         if not session:
-            a_session = anext(get_db())
+            a_session = anext(get_db("task_stat_update"))
             session = await a_session
 
         try:
@@ -180,10 +180,10 @@ async def async_main(task_type: DetectionTaskType):
     )
     extra_mesg = ""
     # counter = 0
+    a_session = anext(get_db("main_task"))
+    session = await a_session
     while True:
         # counter += 1
-        a_session = anext(get_db())
-        session = await a_session
         # session = await AsyncSessionFactory()
         stmt_task = (
             select(TaskMd)
