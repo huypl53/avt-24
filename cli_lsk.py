@@ -15,7 +15,7 @@ from dictdiffer import diff
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
-from sqlalchemy.engine.row import Row
+from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connector import get_db
@@ -98,12 +98,12 @@ def update_task_chronologically(
         query = text(
             f"SELECT * FROM public.avt_task where task_type = {task_type} and id = {task_id}"
         )
-        session = db_session
-        if not session:
-            a_session = anext(get_db("task_stat_update"))
-            session = await a_session
 
         try:
+            session = db_session
+            if not session:
+                a_session = anext(get_db("task_stat_update"))
+                session = await a_session
             results = await session.execute(query)
             result = results.first()
             if not result:
@@ -560,6 +560,12 @@ async def async_main(task_type: DetectionTaskType):
                     os.remove(tmp_im_path)
                 logger.info(f"Process task id = {t.id} successfully")
 
+                await session.commit()
+        except (InterfaceError, OperationalError) as e:
+            logger.error(f"Connection error occurred: {e}")
+            await session.close()  # Close invalid session
+            a_session = anext(get_db("main_task"))
+            session = await a_session
         except Exception as e:
             if current_task:
                 await _update_task(
@@ -573,7 +579,6 @@ async def async_main(task_type: DetectionTaskType):
                 update_process.join()
 
             await asyncio.sleep(2)
-            await session.commit()
 
         print("----------")
         await asyncio.sleep(3)

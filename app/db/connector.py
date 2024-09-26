@@ -12,6 +12,11 @@ create_engine = lambda: create_async_engine(
     settings.asyncpg_url.unicode_string(),
     future=True,
     # echo="debug",
+    # pool_size=20,                # Max number of connections in the pool
+    max_overflow=30,  # Max additional connections beyond pool_size
+    pool_timeout=50,  # Timeout to wait for a connection before raising an error
+    pool_recycle=1800,  # Time in seconds to recycle the connection (to prevent stale connections)
+    pool_pre_ping=True,  # Check if a connection is alive before using it
 )
 
 # expire_on_commit=False will prevent attributes from being expired
