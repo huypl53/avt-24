@@ -21,7 +21,13 @@ git clone --depth 1 --branch main --single-branch https://github.com/huypl53/LSK
 
 Update `.env` file
 
-Start new containers
+First, build the desired docker image
+
+```base
+ docker compose -f docker/lsk/base.yml build lsknet
+```
+
+The, start new containers
 
 ```bash
 # docker pull pytorch/pytorch:1.11.0-cuda11.3-cudnn8-runtime
