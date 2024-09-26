@@ -24,16 +24,16 @@ Update `.env` file
 First, build the desired docker image
 
 ```base
- docker compose -f docker/lsk/base.yml build lsknet
+ docker compose -f docker/lsk/compose.yml build lsknet
 ```
 
 The, start new containers
 
 ```bash
 # docker pull pytorch/pytorch:1.11.0-cuda11.3-cudnn8-runtime
-docker compose -f docker/lsk/base.yml --profile ship up
-docker compose -f docker/lsk/base.yml --profile change up
-docker compose -f docker/lsk/base.yml --profile military up
+docker compose -f docker/lsk/compose.yml --profile ship up
+docker compose -f docker/lsk/compose.yml --profile change up
+docker compose -f docker/lsk/compose.yml --profile military up
 ```
 
 ### Militia object detection demo
