@@ -182,6 +182,119 @@ async def async_main(task_type: DetectionTaskType):
     # counter = 0
     a_session = anext(get_db("main_task"))
     session = await a_session
+    # db_thread: DbProcess = None
+    update_process: multiprocessing.Process | None = None
+    stop_event: multiprocessing.synchronize.Event | None = None
+
+    def _update_process_func(t: TaskMd):
+        nonlocal update_process, stop_event
+        if update_process:
+            update_process.terminate()
+            update_process.join()
+        if stop_event:
+            stop_event.set()
+
+        stop_event = multiprocessing.Event()
+        update_process = multiprocessing.Process(
+            target=update_task_chronologically,
+            args=([t.id, stop_event, task_type.value]),
+        )
+
+        update_process.start()
+
+    def _update_param(input_param_dict: Dict):
+        nonlocal input_params, pre_param_conf, reload_model, model
+        if not pre_param_conf:
+            return
+        input_param_no_file_dict = {
+            k: v for k, v in input_param_dict.items() if k != "input_file"
+        }
+
+        new_params_cnt = len(
+            list(
+                diff(
+                    input_param_no_file_dict,
+                    dict(pre_param_conf),
+                )
+            )
+        )
+
+        if new_params_cnt or not model:
+            logger.info(f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}")
+            reload_model = True
+            # pre_conf.update(param_dict)
+            pre_param_conf = pre_param_conf.model_copy(update=input_param_no_file_dict)
+            input_params = DetectionInputParam.model_validate(
+                {
+                    **pre_param_conf.model_dump(),
+                    **input_param_dict,
+                }
+            )
+        if reload_model:
+            try:
+                model = init_detector(
+                    input_params.config,
+                    input_params.checkpoint,
+                    device=input_params.device,
+                )
+                reload_model = False
+            except Exception as e:
+                model = None
+                reload_model = True
+                raise e
+
+    async def _process_image(input_file: str) -> Tuple[None | np.ndarray, bool]:
+        nonlocal bname, save_dir, im, tmp_im_path, input_params
+        bname = os.path.basename(input_file).rsplit(".", 1)[0]
+        save_dir = os.path.join(input_params.out_dir, bname)
+        ftpTransfer.mkdir(save_dir)
+
+        try:
+            bin_im = read_ftp_bin_image(input_file)
+            if not bin_im:
+                await _update_task(f"Read image failed at {input_file}")
+                return None, False
+        except Exception:
+            await _update_task(f"Read image failed at {input_file}")
+            return None, False
+        tmp_im_path = f"./tmp/{bname}.tif"
+        open(tmp_im_path, "wb").write(bin_im)
+
+        image = np.asarray(bytearray(bin_im), dtype="uint8")
+        im = cv2.imdecode(image, cv2.IMREAD_COLOR)
+        return im, True
+
+    async def _update_task(msg: str, stat: int = 0):
+        nonlocal session, current_task
+        try:
+            if not current_task:
+                return
+            await update_task_info(current_task, msg, session, stat)
+        except:
+            stop_update_task_continuously()
+
+    async def _infer_image_params() -> Tuple[np.ndarray | None, bool]:
+        nonlocal current_task, model, tmp_im_path, im, input_params
+
+        result = inference_detector_by_patches(
+            model,
+            im,
+            input_params.patch_sizes,
+            input_params.patch_steps,
+            input_params.img_ratios,
+            input_params.merge_iou_thr,
+        )  # inference for batch
+
+        return result, True
+
+    def stop_update_task_continuously():
+        nonlocal stop_event, update_process
+        if stop_event:
+            stop_event.set()
+        if update_process:
+            update_process.terminate()
+            update_process.join()
+
     while True:
         # counter += 1
         # session = await AsyncSessionFactory()
@@ -195,112 +308,6 @@ async def async_main(task_type: DetectionTaskType):
         tasks = await query_tasks_by_stmt(stmt_task, session)
 
         print("----------")
-        # db_thread: DbProcess = None
-        update_process: multiprocessing.Process | None = None
-        stop_event: multiprocessing.synchronize.Event | None = None
-
-        def _update_process_func(t: TaskMd):
-            nonlocal update_process, stop_event
-            if update_process:
-                update_process.terminate()
-                update_process.join()
-            if stop_event:
-                stop_event.set()
-
-            stop_event = multiprocessing.Event()
-            update_process = multiprocessing.Process(
-                target=update_task_chronologically,
-                args=([t.id, stop_event, task_type.value]),
-            )
-
-            update_process.start()
-
-        def _update_param(input_param_dict: Dict):
-            nonlocal input_params, pre_param_conf, reload_model, model
-            if not pre_param_conf:
-                return
-            input_param_no_file_dict = {
-                k: v for k, v in input_param_dict.items() if k != "input_file"
-            }
-
-            new_params_cnt = len(
-                list(
-                    diff(
-                        input_param_no_file_dict,
-                        dict(pre_param_conf),
-                    )
-                )
-            )
-
-            if new_params_cnt or not model:
-                logger.info(
-                    f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}"
-                )
-                reload_model = True
-                # pre_conf.update(param_dict)
-                pre_param_conf = pre_param_conf.model_copy(
-                    update=input_param_no_file_dict
-                )
-                input_params = DetectionInputParam.model_validate(
-                    {
-                        **pre_param_conf.model_dump(),
-                        **input_param_dict,
-                    }
-                )
-            if reload_model:
-                try:
-                    model = init_detector(
-                        input_params.config,
-                        input_params.checkpoint,
-                        device=input_params.device,
-                    )
-                    reload_model = False
-                except Exception as e:
-                    model = None
-                    reload_model = True
-                    raise e
-
-        async def _process_image(input_file: str) -> Tuple[None | np.ndarray, bool]:
-            nonlocal bname, save_dir, im, tmp_im_path, input_params
-            bname = os.path.basename(input_file).rsplit(".", 1)[0]
-            save_dir = os.path.join(input_params.out_dir, bname)
-            ftpTransfer.mkdir(save_dir)
-
-            try:
-                bin_im = read_ftp_bin_image(input_file)
-                if not bin_im:
-                    await _update_task(f"Read image failed at {input_file}")
-                    return None, False
-            except Exception:
-                await _update_task(f"Read image failed at {input_file}")
-                return None, False
-            tmp_im_path = f"./tmp/{bname}.tif"
-            open(tmp_im_path, "wb").write(bin_im)
-
-            image = np.asarray(bytearray(bin_im), dtype="uint8")
-            im = cv2.imdecode(image, cv2.IMREAD_COLOR)
-            return im, True
-
-        async def _update_task(msg: str, stat: int = 0):
-            nonlocal session, current_task
-            if not current_task:
-                return
-            await update_task_info(current_task, msg, session, stat)
-
-        async def _infer_image_params() -> Tuple[np.ndarray | None, bool]:
-            nonlocal current_task, model, tmp_im_path, im, input_params
-
-            result = inference_detector_by_patches(
-                model,
-                im,
-                input_params.patch_sizes,
-                input_params.patch_steps,
-                input_params.img_ratios,
-                input_params.merge_iou_thr,
-            )  # inference for batch
-
-            return result, True
-
         try:
             for task_i, t in enumerate(tasks):
                 extra_mesg = ""
@@ -560,31 +567,31 @@ async def async_main(task_type: DetectionTaskType):
                     os.remove(tmp_im_path)
                 logger.info(f"Process task id = {t.id} successfully")
 
-                if stop_event:
-                    stop_event.set()
-                if update_process:
-                    update_process.terminate()
-                    update_process.join()
+                stop_update_task_continuously()
                 await asyncio.sleep(2)
                 await session.commit()
         except RuntimeError as e:
+            stop_update_task_continuously()
             if "out of memory" not in str(e):
                 pass
             else:
                 reload_model = True
-                logger.error(str(e))
                 torch.cuda.synchronize()
-                if current_task:
-                    await _update_task(
-                        str(e),
-                    )
-                await asyncio.sleep(60)
+            logger.error(str(e))
+            if current_task:
+                await asyncio.sleep(2)
+                await _update_task(
+                    str(e),
+                )
+            await asyncio.sleep(60)
         except (InterfaceError, OperationalError) as e:
+            stop_update_task_continuously()
             logger.error(f"Connection error occurred: {e}")
             await session.close()  # Close invalid session
             a_session = anext(get_db("main_task"))
             session = await a_session
         except Exception as e:
+            stop_update_task_continuously()
             if current_task:
                 await _update_task(
                     str(e),
