@@ -11,17 +11,17 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
+import torch
 from dictdiffer import diff
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
-from sqlalchemy import Select, select, text
+from sqlalchemy import select, text
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connector import get_db
 from app.model.task import TaskMd
 from app.schema import (
-    SHIP_LABELS,
     DetectionInputParam,
     DetectionParam,
     DetectionTaskType,
@@ -560,7 +560,25 @@ async def async_main(task_type: DetectionTaskType):
                     os.remove(tmp_im_path)
                 logger.info(f"Process task id = {t.id} successfully")
 
+                if stop_event:
+                    stop_event.set()
+                if update_process:
+                    update_process.terminate()
+                    update_process.join()
+                await asyncio.sleep(2)
                 await session.commit()
+        except RuntimeError as e:
+            if "out of memory" not in str(e):
+                pass
+            else:
+                reload_model = True
+                logger.error(str(e))
+                torch.cuda.synchronize()
+                if current_task:
+                    await _update_task(
+                        str(e),
+                    )
+                await asyncio.sleep(60)
         except (InterfaceError, OperationalError) as e:
             logger.error(f"Connection error occurred: {e}")
             await session.close()  # Close invalid session
@@ -572,21 +590,10 @@ async def async_main(task_type: DetectionTaskType):
                     str(e),
                 )
         finally:
-            if stop_event:
-                stop_event.set()
-            if update_process:
-                update_process.terminate()
-                update_process.join()
-
-            await asyncio.sleep(2)
+            await asyncio.sleep(5)
 
         print("----------")
-        await asyncio.sleep(3)
-        # await session.close()
 
-
-# Run this from outter directory
-# python ./LSKNet/huge_images_extract.py --dir ./images  --config './LSKNet/configs/oriented_rcnn/oriented_rcnn_r50_fpn_1x_dota_le90.py' --checkpoint './epoch_3_050324.pth' --score-thr 0.5 --save-dir /tmp/ships/
 
 if __name__ == "__main__":
 
