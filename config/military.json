@@ -1,0 +1,11 @@
+{
+  "algorithm": "phat_hien_doi_tuong_quan_su",
+  "config": "./LSKNet/configs/roi_trans/roi_trans_r50_fpn_1x_dota_ms_rr_le90.py",
+  "checkpoint": "./roi_trans_r50_fpn_1x_dota_ms_rr_le90-fa99496f.pth",
+  "device": "cuda:0",
+  "score_thr": 0.3,
+  "patch_sizes": [1024],
+  "patch_steps": [824],
+  "img_ratios": [1],
+  "merge_iou_thr": 0.1
+}

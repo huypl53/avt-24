@@ -19,7 +19,7 @@ SHELL ["conda", "run", "-n", "avt-detection", "/bin/bash", "-c"]
 
 RUN <<EOF
     conda install pip=24.0 -y
-    conda install conda-forge::ninja=1.12.1
+    conda install conda-forge::ninja=1.12.1 -y
     pip install numpy==1.26.4
     pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
     pip install openmim
@@ -35,7 +35,9 @@ RUN <<EOF
     pip install timm==0.6.13 future tensorboard
 
     cd  /workspace/avt-detection/
-    pip install -r requirements.txt
+    pip install -r requirements/lsk.txt
+    pip install -r requirements/app.txt
+    pip install -r requirements/ship.txt
     cd ./LSKNet && pip install -v -e .
     pip cache purge
     conda clean --all -y

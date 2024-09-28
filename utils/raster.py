@@ -24,17 +24,22 @@ def read_image_corner_coords(im_path: str) -> List[Tuple[float, float]]:
     return result["cornerCoordinates"]
 
 
+def read_tif_meta(im_path: str):
+    r = subprocess.run(["gdalinfo", im_path, "-json"], capture_output=True, text=True)
+    result = json.loads(r.stdout)
+    return result
+
+
 def pixel_point_to_lat_long(
-    im_path: str, points: List[Tuple[float, float]] | np.ndarray
-) -> List[Tuple[float, float]]:
-    """
+    points: List[Tuple[float, float]] | np.ndarray, tif_meta
+) -> List[List[float]]:
+    """convert list of point(x, y) into lat/long
     points: N points in format of (x, y)
+    Returns:
+        List[ [lat, long] x N]: _description_
     """
     # 'size': [9982, 5484],  width, height
     # check more at https://gdal.org/programs/gdalinfo.html
-
-    r = subprocess.run(["gdalinfo", im_path, "-json"], capture_output=True, text=True)
-    result = json.loads(r.stdout)
 
     # corners = result["cornerCoordinates"]
     # tl, bl, br, tr = (
@@ -45,12 +50,12 @@ def pixel_point_to_lat_long(
     # )
 
     # decimal degree
-    corners = result["wgs84Extent"]["coordinates"]
+    corners = tif_meta["wgs84Extent"]["coordinates"]
     tl, bl, br, tr = corners[0][:4]
-    w, h = result["size"]
+    w, h = tif_meta["size"]
 
     dxy = [(p[0] / w, p[1] / h) for p in points]
-    ll_points: List[Tuple[float, float]] = []
+    ll_points: List[List[float]] = []
     for d in dxy:
         dx, dy = d
 
@@ -62,7 +67,7 @@ def pixel_point_to_lat_long(
         lon_bot = bl[0] + (br[0] - bl[0]) * dx
         lon = lon_top + (lon_bot - lon_top) * dy
 
-        ll_points.append((lat, lon))
+        ll_points.append([lat, lon])
 
     return ll_points
 
@@ -92,6 +97,15 @@ def haversine(lon1, lat1, lon2, lat2):
     distance_m = r * c
 
     return distance_m
+
+
+def angle_to_bearings(data: np.ndarray, i) -> np.ndarray:
+    output = np.copy(data)
+    output[..., i] -= 90
+    angles = output[..., i]
+    output[..., i][angles > 0] = 360 - angles[angles > 0]
+    output[..., i][angles < 0] = -angles[angles < 0]
+    return output
 
 
 if __name__ == "__main__":
