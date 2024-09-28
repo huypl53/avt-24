@@ -36,6 +36,7 @@ from app.service.binio import (
 )
 from core import Worker
 from core.box_record import BoxDetect, BoxRecord
+from core.ship.adsb import check_adsb
 from core.ship.classifier import classify_ship
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
@@ -428,6 +429,14 @@ async def async_main(task_type: DetectionTaskType):
                         lat_long_coords = np.concatenate(
                             (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
                         )
+                        if task_type == DetectionTaskType.SHIP:
+                            match_adsb_indices = await check_adsb(lat_long_coords)
+                            patches = [
+                                p
+                                for i, p in enumerate(patches)
+                                if i in match_adsb_indices
+                            ]
+                            lat_long_coords = lat_long_coords[match_adsb_indices]
                         for box_i, (p, c) in enumerate(zip(patches, lat_long_coords)):
                             lb_im_id = f"{class_id:03d}_{box_i:04d}"
                             path = os.path.join(save_dir, lb_im_id)
