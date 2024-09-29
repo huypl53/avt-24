@@ -1,6 +1,6 @@
 from typing import Any
 
-from sqlalchemy import Float, Integer, String, Text
+from sqlalchemy import DateTime, Float, Integer, String, Text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -65,7 +65,7 @@ class TaskMd(BaseMd):
     task_output: Mapped[str] = mapped_column(String)
     task_message: Mapped[str] = mapped_column(Text)
     created_at: Mapped[str] = mapped_column(String)
-    updated_at: Mapped[str] = mapped_column(String)
+    updated_at: Mapped[str] = mapped_column(DateTime(timezone=False))
     user_id: Mapped[int] = mapped_column(Integer)
     task_id_ref: Mapped[int] = mapped_column(Integer)
 

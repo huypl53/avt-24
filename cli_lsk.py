@@ -5,8 +5,8 @@ import multiprocessing
 import multiprocessing.synchronize
 import os
 import re
-import time
 import traceback
+from datetime import datetime
 from typing import Dict, List, Tuple
 
 import cv2
@@ -52,9 +52,11 @@ async def update_task_info(
     t: TaskMd, msg: str, session: AsyncSession, task_stat: int = 0
 ):
 
-    t.task_stat = task_stat
-    t.task_message = msg
-    t.task_stat = 0
+    if task_stat:
+        t.task_stat = task_stat
+    if msg:
+        t.task_message = msg
+    t.updated_at = datetime.now()
     await session.commit()
 
 
@@ -88,7 +90,7 @@ def update_task_chronologically(
     task_id: int,
     stop_event,
     task_type: int,
-    db_session: AsyncSession | None = None,
+    session: AsyncSession | None = None,
     start=2,
     step: int = 1,
 ):
@@ -96,12 +98,12 @@ def update_task_chronologically(
     asyncio.set_event_loop(loop)
 
     async def run(stop_event):
+        nonlocal session
         query = text(
             f"SELECT * FROM public.avt_task where task_type = {task_type} and id = {task_id}"
         )
 
         try:
-            session = db_session
             if not session:
                 a_session = anext(get_db("task_stat_update"))
                 session = await a_session
@@ -131,7 +133,8 @@ def update_task_chronologically(
             logger.error(traceback.format_exc())
         finally:
             # await session.commit()
-            await session.close()
+            if session is not None:
+                await session.close()
 
     # asyncio.run(run())
     loop.run_until_complete(run(stop_event))
@@ -253,10 +256,10 @@ async def async_main(task_type: DetectionTaskType):
         try:
             bin_im = read_ftp_bin_image(input_file)
             if not bin_im:
-                await _update_task(f"Read image failed at {input_file}")
+                await _update_task(f"Read image failed at {input_file}", 0)
                 return None, False
         except Exception:
-            await _update_task(f"Read image failed at {input_file}")
+            await _update_task(f"Read image failed at {input_file}", 0)
             return None, False
         tmp_im_path = f"./tmp/{bname}.tif"
         open(tmp_im_path, "wb").write(bin_im)
@@ -265,12 +268,18 @@ async def async_main(task_type: DetectionTaskType):
         im = cv2.imdecode(image, cv2.IMREAD_COLOR)
         return im, True
 
-    async def _update_task(msg: str, stat: int = 0):
+    async def _update_task(msg: str = "", stat: int | None = None):
         nonlocal session, current_task
+        task_stat = 0
+        if stat is None:
+            if current_task is not None:
+                task_stat = current_task.task_stat
+        else:
+            task_stat = stat
         try:
             if not current_task:
                 return
-            await update_task_info(current_task, msg, session, stat)
+            await update_task_info(current_task, msg, session, task_stat)
         except:
             stop_update_task_continuously()
 
@@ -311,6 +320,7 @@ async def async_main(task_type: DetectionTaskType):
         print("----------")
         try:
             for task_i, t in enumerate(tasks):
+                current_task = t
                 extra_mesg = ""
                 if t.task_id_ref and t.task_id_ref != 0:
                     # t has to wait to task with id = t.task_id_ref
@@ -324,28 +334,25 @@ async def async_main(task_type: DetectionTaskType):
                     )
                     tasks = await query_tasks_by_stmt(stmt_ref_tasks, session)
                     if len(tasks) == 0:
-                        t.task_message = "Waiting for task id = {}".format(
-                            t.task_id_ref
-                        )
-                        await session.commit()
+                        msg = "Waiting for task id = {}".format(t.task_id_ref)
+                        await _update_task(msg)
                         continue
                     pass
                 _update_process_func(t)
-                current_task = t
-                t.task_message = "Task is being processed"
+                msg = "Task is being processed"
                 t.process_id = os.getpid()
-                await session.commit()
+                await _update_task(msg)
 
                 input_param_dict = parse_param_dict(t.task_param)
                 if "input_file" not in input_param_dict:
-                    await _update_task("<input_file> field is requried!")
+                    await _update_task("<input_file> field is requried!", 0)
                     continue
 
                 _update_param(input_param_dict)
 
                 # t.task_param = stringify_dict_list(input_params.model_dump())
                 t.task_param = input_params.model_dump_json(exclude_none=True)
-                await session.commit()
+                await _update_task()
                 detect_results = []
                 detection_history: List[List[List[BoxDetect]]] = [
                     [] for _ in range(len(input_params.input_file))
@@ -424,7 +431,7 @@ async def async_main(task_type: DetectionTaskType):
                                 ]
                             )
                         except Exception:
-                            await _update_task("Read crs from image failed!")
+                            await _update_task("Read crs from image failed!", 0)
                             continue
                         lat_long_coords = np.concatenate(
                             (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
@@ -578,7 +585,7 @@ async def async_main(task_type: DetectionTaskType):
 
                 stop_update_task_continuously()
                 await asyncio.sleep(2)
-                await session.commit()
+                await _update_task(stat=1)
         except RuntimeError as e:
             stop_update_task_continuously()
             if "out of memory" not in str(e):
@@ -589,9 +596,7 @@ async def async_main(task_type: DetectionTaskType):
             logger.error(str(e))
             if current_task:
                 await asyncio.sleep(2)
-                await _update_task(
-                    str(e),
-                )
+                await _update_task(str(e), 0)
             await asyncio.sleep(60)
         except (InterfaceError, OperationalError) as e:
             stop_update_task_continuously()
@@ -602,9 +607,7 @@ async def async_main(task_type: DetectionTaskType):
         except Exception as e:
             stop_update_task_continuously()
             if current_task:
-                await _update_task(
-                    str(e),
-                )
+                await _update_task(str(e), 0)
         finally:
             await asyncio.sleep(5)
 
