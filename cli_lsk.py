@@ -132,9 +132,10 @@ def update_task_chronologically(
             logger.error(e)
             logger.error(traceback.format_exc())
         finally:
+            pass
             # await session.commit()
-            if session is not None:
-                await session.close()
+            # if session is not None:
+            #     await session.close()
 
     # asyncio.run(run())
     loop.run_until_complete(run(stop_event))
@@ -438,12 +439,13 @@ async def async_main(task_type: DetectionTaskType):
                         )
                         if task_type == DetectionTaskType.SHIP:
                             match_adsb_indices = await check_adsb(lat_long_coords)
-                            patches = [
-                                p
-                                for i, p in enumerate(patches)
-                                if i in match_adsb_indices
-                            ]
-                            lat_long_coords = lat_long_coords[match_adsb_indices]
+                            if match_adsb_indices is not None:
+                                patches = [
+                                    p
+                                    for i, p in enumerate(patches)
+                                    if i in match_adsb_indices
+                                ]
+                                lat_long_coords = lat_long_coords[match_adsb_indices]
                         for box_i, (p, c) in enumerate(zip(patches, lat_long_coords)):
                             lb_im_id = f"{class_id:03d}_{box_i:04d}"
                             path = os.path.join(save_dir, lb_im_id)
@@ -601,7 +603,8 @@ async def async_main(task_type: DetectionTaskType):
         except (InterfaceError, OperationalError) as e:
             stop_update_task_continuously()
             logger.error(f"Connection error occurred: {e}")
-            await session.close()  # Close invalid session
+            if session.is_active:
+                await session.close()  # Close invalid session
             a_session = anext(get_db("main_task"))
             session = await a_session
         except Exception as e:
