@@ -240,11 +240,10 @@ async def async_main():
                 )
             )
 
-            if new_params_cnt or not model:
+            if new_params_cnt:
                 logger.info(
                     f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}"
                 )
-                reload_model = True
                 # pre_conf.update(param_dict)
                 pre_param_conf = pre_param_conf.model_copy(
                     update=input_param_no_file_dict
@@ -255,6 +254,8 @@ async def async_main():
                         **input_param_dict,
                     }
                 )
+            if not model:
+                reload_model = True
             if reload_model:
                 try:
                     model = init_detector(
