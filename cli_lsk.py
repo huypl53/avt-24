@@ -165,7 +165,8 @@ def load_task_config(task_type: DetectionTaskType) -> DetectionParam | None:
             return None
 
 
-async def async_main(task_type: DetectionTaskType):
+# async def async_main(task_type: DetectionTaskType):
+async def async_main():
     # assert len(sys.argv) < 2
     # task_id = int(sys.argv[1])
 
@@ -176,151 +177,168 @@ async def async_main(task_type: DetectionTaskType):
     im: np.ndarray = None
     bname: str = ""
     save_dir: str = ""
-    pre_param_conf = load_task_config(task_type)
-    if not pre_param_conf:
-        return
-    input_params: DetectionInputParam = DetectionInputParam(
-        **pre_param_conf.model_dump(),
-        input_file=[""],
-    )
-    extra_mesg = ""
-    # counter = 0
-    a_session = anext(get_db("main_task"))
-    session = await a_session
-    # db_thread: DbProcess = None
-    update_process: multiprocessing.Process | None = None
-    stop_event: multiprocessing.synchronize.Event | None = None
-    task_infer_image_success = False
 
-    def _update_process_func(t: TaskMd):
-        nonlocal update_process, stop_event
-        if update_process:
-            update_process.terminate()
-            update_process.join()
-        if stop_event:
-            stop_event.set()
+    avail_task_types = [
+        DetectionTaskType.SHIP,
+        DetectionTaskType.CHANGE,
+        DetectionTaskType.MILITARY,
+    ]
+    _num_task_types = len(avail_task_types)
+    _i = 0
+    while True:
+        task_type = avail_task_types[_i % _num_task_types]
+        _i += 1
+        if _i >= _num_task_types:
+            _i = 0
 
-        stop_event = multiprocessing.Event()
-        update_process = multiprocessing.Process(
-            target=update_task_chronologically,
-            args=([t.id, stop_event, task_type.value]),
-        )
-
-        update_process.start()
-
-    def _update_param(input_param_dict: Dict):
-        nonlocal input_params, pre_param_conf, reload_model, model
+        pre_param_conf = load_task_config(task_type)
         if not pre_param_conf:
             return
-        input_param_no_file_dict = {
-            k: v for k, v in input_param_dict.items() if k != "input_file"
-        }
-
-        new_params_cnt = len(
-            list(
-                diff(
-                    input_param_no_file_dict,
-                    dict(pre_param_conf),
-                )
-            )
+        input_params: DetectionInputParam = DetectionInputParam(
+            **pre_param_conf.model_dump(),
+            input_file=[""],
         )
+        extra_mesg = ""
+        # counter = 0
+        a_session = anext(get_db("main_task"))
+        session = await a_session
+        # db_thread: DbProcess = None
+        update_process: multiprocessing.Process | None = None
+        stop_event: multiprocessing.synchronize.Event | None = None
+        task_infer_image_success = False
 
-        if new_params_cnt or not model:
-            logger.info(f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}")
-            reload_model = True
-            # pre_conf.update(param_dict)
-            pre_param_conf = pre_param_conf.model_copy(update=input_param_no_file_dict)
-            input_params = DetectionInputParam.model_validate(
-                {
-                    **pre_param_conf.model_dump(),
-                    **input_param_dict,
-                }
+        def _update_process_func(t: TaskMd):
+            nonlocal update_process, stop_event
+            if update_process:
+                update_process.terminate()
+                update_process.join()
+            if stop_event:
+                stop_event.set()
+
+            stop_event = multiprocessing.Event()
+            update_process = multiprocessing.Process(
+                target=update_task_chronologically,
+                args=([t.id, stop_event, task_type.value]),
             )
-        if reload_model:
-            try:
-                model = init_detector(
-                    input_params.config,
-                    input_params.checkpoint,
-                    device=input_params.device,
+
+            update_process.start()
+
+        def _update_param(input_param_dict: Dict):
+            nonlocal input_params, pre_param_conf, reload_model, model
+            if not pre_param_conf:
+                return
+            input_param_no_file_dict = {
+                k: v for k, v in input_param_dict.items() if k != "input_file"
+            }
+
+            new_params_cnt = len(
+                list(
+                    diff(
+                        input_param_no_file_dict,
+                        dict(pre_param_conf),
+                    )
                 )
-                reload_model = False
-            except Exception as e:
-                model = None
+            )
+
+            if new_params_cnt or not model:
+                logger.info(
+                    f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}"
+                )
                 reload_model = True
-                raise e
+                # pre_conf.update(param_dict)
+                pre_param_conf = pre_param_conf.model_copy(
+                    update=input_param_no_file_dict
+                )
+                input_params = DetectionInputParam.model_validate(
+                    {
+                        **pre_param_conf.model_dump(),
+                        **input_param_dict,
+                    }
+                )
+            if reload_model:
+                try:
+                    model = init_detector(
+                        input_params.config,
+                        input_params.checkpoint,
+                        device=input_params.device,
+                    )
+                    reload_model = False
+                except Exception as e:
+                    model = None
+                    reload_model = True
+                    raise e
 
-    async def _process_image(input_file: str) -> Tuple[None | np.ndarray, bool]:
-        nonlocal bname, save_dir, im, tmp_im_path, input_params, task_infer_image_success
-        bname = os.path.basename(input_file).rsplit(".", 1)[0]
-        save_dir = os.path.join(input_params.out_dir, bname)
-        ftpTransfer.mkdir(save_dir)
+        async def _process_image(input_file: str) -> Tuple[None | np.ndarray, bool]:
+            nonlocal bname, save_dir, im, tmp_im_path, input_params, task_infer_image_success
+            bname = os.path.basename(input_file).rsplit(".", 1)[0]
+            save_dir = os.path.join(input_params.out_dir, bname)
+            ftpTransfer.mkdir(save_dir)
 
-        try:
-            bin_im = read_ftp_bin_image(input_file)
-            task_infer_image_success = True
-            if not bin_im:
+            try:
+                bin_im = read_ftp_bin_image(input_file)
+                task_infer_image_success = True
+                if not bin_im:
+                    task_infer_image_success = False
+                    await _update_task(f"Read image failed at {input_file}")
+                    return None, False
+            except Exception:
                 task_infer_image_success = False
                 await _update_task(f"Read image failed at {input_file}")
                 return None, False
-        except Exception:
-            task_infer_image_success = False
-            await _update_task(f"Read image failed at {input_file}")
-            return None, False
-        tmp_im_path = f"./tmp/{bname}.tif"
-        open(tmp_im_path, "wb").write(bin_im)
+            tmp_im_path = f"./tmp/{bname}.tif"
+            open(tmp_im_path, "wb").write(bin_im)
 
-        image = np.asarray(bytearray(bin_im), dtype="uint8")
-        im = cv2.imdecode(image, cv2.IMREAD_COLOR)
-        return im, True
+            image = np.asarray(bytearray(bin_im), dtype="uint8")
+            im = cv2.imdecode(image, cv2.IMREAD_COLOR)
+            return im, True
 
-    async def _update_task(msg: str = "", stat: int | None = None):
-        nonlocal session, current_task
-        task_stat = 0
-        if "Expected all tensors to be on the same device" in msg:
-            pass
-        if stat is None:
-            if current_task is not None:
-                task_stat = current_task.task_stat
-        else:
-            task_stat = stat
-            if stat == 0:
+        async def _update_task(msg: str = "", stat: int | None = None):
+            nonlocal session, current_task
+            task_stat = 0
+            if "Expected all tensors to be on the same device" in msg:
+                pass
+            if stat is None:
+                if current_task is not None:
+                    task_stat = current_task.task_stat
+            else:
+                task_stat = stat
+                if stat == 0:
+                    stop_update_task_continuously()
+            try:
+                if not current_task:
+                    return
+                await update_task_info(current_task, msg, session, task_stat)
+            except:
                 stop_update_task_continuously()
-        try:
-            if not current_task:
-                return
-            await update_task_info(current_task, msg, session, task_stat)
-        except:
-            stop_update_task_continuously()
 
-    async def _infer_image_params() -> Tuple[np.ndarray | None, bool]:
-        nonlocal current_task, model, tmp_im_path, im, input_params, task_infer_image_success
+        async def _infer_image_params() -> Tuple[np.ndarray | None, bool]:
+            nonlocal current_task, model, tmp_im_path, im, input_params, task_infer_image_success
 
-        try:
-            result = inference_detector_by_patches(
-                model,
-                im,
-                input_params.patch_sizes,
-                input_params.patch_steps,
-                input_params.img_ratios,
-                input_params.merge_iou_thr,
-            )  # inference for batch
+            try:
+                result = inference_detector_by_patches(
+                    model,
+                    im,
+                    input_params.patch_sizes,
+                    input_params.patch_steps,
+                    input_params.img_ratios,
+                    input_params.merge_iou_thr,
+                )  # inference for batch
 
-            task_infer_image_success = True
-            return result, True
-        except Exception as e:
-            logger.error(e)
-            task_infer_image_success = False
-            return None, False
+                task_infer_image_success = True
+                return result, True
+            except Exception as e:
+                logger.error(e)
+                task_infer_image_success = False
+                return None, False
 
-    def stop_update_task_continuously():
-        nonlocal stop_event, update_process
-        if stop_event:
-            stop_event.set()
-        if update_process:
-            update_process.terminate()
-            update_process.join()
+        def stop_update_task_continuously():
+            nonlocal stop_event, update_process
+            if stop_event:
+                stop_event.set()
+            if update_process:
+                update_process.terminate()
+                update_process.join()
 
-    while True:
         # counter += 1
         # session = await AsyncSessionFactory()
         stmt_task = (
@@ -642,16 +660,18 @@ async def async_main(task_type: DetectionTaskType):
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--task_type",
-        type=lambda v: DetectionTaskType[v],
-        choices=list(DetectionTaskType),
-        required=True,
-        help="Task type",
-    )
-    args, _ = parser.parse_known_args()
-    asyncio.run(async_main(args.task_type))
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument(
+    #     "--task_type",
+    #     type=lambda v: DetectionTaskType[v],
+    #     choices=list(DetectionTaskType),
+    #     required=True,
+    #     help="Task type",
+    # )
+    # args, _ = parser.parse_known_args()
+    # asyncio.run(async_main(args.task_type))
+
+    asyncio.run(async_main())
 
     # pre_param_conf = load_task_config(args.task_type)
     # worker = Worker()
