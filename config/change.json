@@ -1,8 +1,8 @@
 {
   "algorithm": "phat_hien_thay_doi",
-  "config": "./LSKNet/configs/redet/redet_re50_refpn_1x_dota_ms_rr_le90.py",
-  "checkpoint": "./redet_re50_fpn_1x_dota_ms_rr_le90-fc9217b5.pth",
-  "device": "cuda",
+  "config": "./LSKNet/configs/roi_trans/roi_trans_swin_tiny_fpn_1x_dota_le90.py",
+  "checkpoint": "./roi_trans_swin_tiny_fpn_1x_dota_le90-ddeee9ae.pth",
+  "device": "cuda:0",
   "score_thr": 0.3,
   "patch_sizes": [1024],
   "patch_steps": [824],

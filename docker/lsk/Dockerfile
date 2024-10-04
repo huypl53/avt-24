@@ -27,7 +27,8 @@ RUN <<EOF
     mim install mmcv-full==1.5.3
     mim install mmdet==2.25.2
 
-    git clone --depth 1 --branch main  --single-branch https://github.com/open-mmlab/mmrotate.git 
+    # git clone --depth 1 --branch main  --single-branch https://github.com/open-mmlab/mmrotate.git 
+    git clone --branch=v0.3.4 --single-branch https://github.com/open-mmlab/mmrotate.git 
     cd mmrotate 
     pip install -r requirements/build.txt
     pip install -v -e . 

@@ -190,6 +190,7 @@ async def async_main(task_type: DetectionTaskType):
     # db_thread: DbProcess = None
     update_process: multiprocessing.Process | None = None
     stop_event: multiprocessing.synchronize.Event | None = None
+    task_infer_image_success = False
 
     def _update_process_func(t: TaskMd):
         nonlocal update_process, stop_event
@@ -249,18 +250,21 @@ async def async_main(task_type: DetectionTaskType):
                 raise e
 
     async def _process_image(input_file: str) -> Tuple[None | np.ndarray, bool]:
-        nonlocal bname, save_dir, im, tmp_im_path, input_params
+        nonlocal bname, save_dir, im, tmp_im_path, input_params, task_infer_image_success
         bname = os.path.basename(input_file).rsplit(".", 1)[0]
         save_dir = os.path.join(input_params.out_dir, bname)
         ftpTransfer.mkdir(save_dir)
 
         try:
             bin_im = read_ftp_bin_image(input_file)
+            task_infer_image_success = True
             if not bin_im:
-                await _update_task(f"Read image failed at {input_file}", 0)
+                task_infer_image_success = False
+                await _update_task(f"Read image failed at {input_file}")
                 return None, False
         except Exception:
-            await _update_task(f"Read image failed at {input_file}", 0)
+            task_infer_image_success = False
+            await _update_task(f"Read image failed at {input_file}")
             return None, False
         tmp_im_path = f"./tmp/{bname}.tif"
         open(tmp_im_path, "wb").write(bin_im)
@@ -272,11 +276,15 @@ async def async_main(task_type: DetectionTaskType):
     async def _update_task(msg: str = "", stat: int | None = None):
         nonlocal session, current_task
         task_stat = 0
+        if "Expected all tensors to be on the same device" in msg:
+            pass
         if stat is None:
             if current_task is not None:
                 task_stat = current_task.task_stat
         else:
             task_stat = stat
+            if stat == 0:
+                stop_update_task_continuously()
         try:
             if not current_task:
                 return
@@ -285,18 +293,24 @@ async def async_main(task_type: DetectionTaskType):
             stop_update_task_continuously()
 
     async def _infer_image_params() -> Tuple[np.ndarray | None, bool]:
-        nonlocal current_task, model, tmp_im_path, im, input_params
+        nonlocal current_task, model, tmp_im_path, im, input_params, task_infer_image_success
 
-        result = inference_detector_by_patches(
-            model,
-            im,
-            input_params.patch_sizes,
-            input_params.patch_steps,
-            input_params.img_ratios,
-            input_params.merge_iou_thr,
-        )  # inference for batch
+        try:
+            result = inference_detector_by_patches(
+                model,
+                im,
+                input_params.patch_sizes,
+                input_params.patch_steps,
+                input_params.img_ratios,
+                input_params.merge_iou_thr,
+            )  # inference for batch
 
-        return result, True
+            task_infer_image_success = True
+            return result, True
+        except Exception as e:
+            logger.error(e)
+            task_infer_image_success = False
+            return None, False
 
     def stop_update_task_continuously():
         nonlocal stop_event, update_process
@@ -432,20 +446,21 @@ async def async_main(task_type: DetectionTaskType):
                                 ]
                             )
                         except Exception:
-                            await _update_task("Read crs from image failed!", 0)
+                            await _update_task("Read crs from image failed!")
                             continue
                         lat_long_coords = np.concatenate(
                             (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
                         )
                         if task_type == DetectionTaskType.SHIP:
-                            match_adsb_indices = await check_adsb(lat_long_coords)
-                            if match_adsb_indices is not None:
-                                patches = [
-                                    p
-                                    for i, p in enumerate(patches)
-                                    if i in match_adsb_indices
-                                ]
-                                lat_long_coords = lat_long_coords[match_adsb_indices]
+                            # match_adsb_indices = await check_adsb(lat_long_coords)
+                            # if match_adsb_indices is not None:
+                            #     patches = [
+                            #         p
+                            #         for i, p in enumerate(patches)
+                            #         if i in match_adsb_indices
+                            #     ]
+                            #     lat_long_coords = lat_long_coords[match_adsb_indices]
+                            pass
                         for box_i, (p, c) in enumerate(zip(patches, lat_long_coords)):
                             lb_im_id = f"{class_id:03d}_{box_i:04d}"
                             path = os.path.join(save_dir, lb_im_id)
@@ -465,8 +480,10 @@ async def async_main(task_type: DetectionTaskType):
                                     cls_name = str(class_id)
                             else:
                                 try:
-                                    cls_name = classify_ship(p)
-                                    # cate_name = SHIP_LABELS[ship_id]
+                                    if class_id == 1:
+                                        cls_name = classify_ship(p)
+                                    else:
+                                        cls_name = ObjectCategory[class_id]
                                 except:
                                     extra_mesg += "Classify ship failed!"
                                     cls_name = str(DetectionTaskType.SHIP.value)
@@ -508,6 +525,10 @@ async def async_main(task_type: DetectionTaskType):
                         ]
                     }
                 )
+
+                if not task_infer_image_success:
+                    await _update_task("Task inference failed!", 0)
+
                 if task_type in [DetectionTaskType.CHANGE, DetectionTaskType.MILITARY]:
                     num_images = len(detection_history)
                     num_cls = len(detection_history[0])
@@ -608,9 +629,11 @@ async def async_main(task_type: DetectionTaskType):
             a_session = anext(get_db("main_task"))
             session = await a_session
         except Exception as e:
-            stop_update_task_continuously()
             if current_task:
                 await _update_task(str(e), 0)
+            a_session = anext(get_db("main_task"))
+            session = await a_session
+
         finally:
             await asyncio.sleep(5)
 
