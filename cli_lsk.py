@@ -165,6 +165,13 @@ def load_task_config(task_type: DetectionTaskType) -> DetectionParam | None:
             return None
 
 
+def clear_model(model):
+    del model
+    # import gc
+    # gc.collect()
+    # torch.cuda.empty_cache()
+
+
 # async def async_main(task_type: DetectionTaskType):
 async def async_main():
     # assert len(sys.argv) < 2
@@ -228,7 +235,9 @@ async def async_main():
             if not pre_param_conf:
                 return
             input_param_no_file_dict = {
-                k: v for k, v in input_param_dict.items() if k != "input_file"
+                k: v
+                for k, v in input_param_dict.items()
+                if k not in ["input_file", "checkpoint", "config"]
             }
 
             new_params_cnt = len(
@@ -240,7 +249,11 @@ async def async_main():
                 )
             )
 
-            if new_params_cnt:
+            if new_params_cnt or not model:
+                if model:
+                    clear_model(model)
+                    model = None
+                reload_model = True
                 logger.info(
                     f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}"
                 )
@@ -248,16 +261,16 @@ async def async_main():
                 pre_param_conf = pre_param_conf.model_copy(
                     update=input_param_no_file_dict
                 )
-                input_params = DetectionInputParam.model_validate(
-                    {
-                        **pre_param_conf.model_dump(),
-                        **input_param_dict,
-                    }
-                )
-            if not model:
-                reload_model = True
+            input_params = DetectionInputParam.model_validate(
+                {
+                    **pre_param_conf.model_dump(),
+                    **input_param_no_file_dict,
+                    "input_file": input_param_dict["input_file"],
+                }
+            )
             if reload_model:
                 try:
+                    torch.cuda.set_device(int(str(input_params.device).split(":")[-1]))
                     model = init_detector(
                         input_params.config,
                         input_params.checkpoint,
@@ -265,6 +278,7 @@ async def async_main():
                     )
                     reload_model = False
                 except Exception as e:
+                    clear_model(model)
                     model = None
                     reload_model = True
                     raise e
@@ -633,6 +647,8 @@ async def async_main():
             if "out of memory" not in str(e):
                 pass
             else:
+                clear_model(model)
+                model = None
                 reload_model = True
                 torch.cuda.synchronize()
             logger.error(str(e))
