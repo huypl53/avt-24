@@ -1,5 +1,5 @@
 from app.db.connector import get_db
-from app.schema import DetectionParam, DetectionTaskType
+from app.schema import TaskParam, DetectionTaskType
 
 import argparse
 import asyncio
@@ -26,8 +26,8 @@ from app.db.connector import AsyncSessionFactory, get_db
 # from app.db.spawn import DbProcess
 from app.model.task import TaskMd
 from app.schema import (
-    DetectionInputParam,
-    DetectionParam,
+    DetectionTaskParam,
+    TaskParam,
     DetectionTaskType,
     ExtractedObject,
     ObjectCategory,
@@ -41,12 +41,10 @@ from app.service.binio import (
 
 
 class Worker:
-    def __init__(
-        self, task_type: DetectionTaskType, pre_param_conf: DetectionParam
-    ) -> None:
+    def __init__(self, task_type: DetectionTaskType, pre_param_conf: TaskParam) -> None:
         self._task_type = task_type
         self._pre_param_conf = pre_param_conf
-        input_params: DetectionInputParam = DetectionInputParam(
+        input_params: DetectionTaskParam = DetectionTaskParam(
             **pre_param_conf.model_dump(),
             input_files=[""],
         )

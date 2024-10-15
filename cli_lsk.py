@@ -22,8 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.connector import get_db
 from app.model.task import TaskMd
 from app.schema import (
-    DetectionInputParam,
-    DetectionParam,
+    DetectionTaskParam,
+    TaskParam,
     DetectionTaskType,
     ExtractedObject,
     ObjectCategory,
@@ -150,17 +150,17 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     return tasks
 
 
-def load_task_config(task_type: DetectionTaskType) -> DetectionParam | None:
+def load_task_config(task_type: DetectionTaskType) -> TaskParam | None:
     match task_type:
         case DetectionTaskType.SHIP:
             config = open("./config/ship.json", "r").read()
-            return DetectionParam.model_validate_json(config)
+            return TaskParam.model_validate_json(config)
         case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
-            return DetectionParam.model_validate_json(config)
+            return TaskParam.model_validate_json(config)
         case DetectionTaskType.MILITARY:
             config = open("./config/military.json", "r").read()
-            return DetectionParam.model_validate_json(config)
+            return TaskParam.model_validate_json(config)
         case _:
             return None
 
@@ -201,7 +201,7 @@ async def async_main():
         pre_param_conf = load_task_config(task_type)
         if not pre_param_conf:
             return
-        input_params: DetectionInputParam = DetectionInputParam(
+        input_params: DetectionTaskParam = DetectionTaskParam(
             **pre_param_conf.model_dump(),
             input_file=[""],
         )
@@ -261,7 +261,7 @@ async def async_main():
                 pre_param_conf = pre_param_conf.model_copy(
                     update=input_param_no_file_dict
                 )
-            input_params = DetectionInputParam.model_validate(
+            input_params = DetectionTaskParam.model_validate(
                 {
                     **pre_param_conf.model_dump(),
                     **input_param_no_file_dict,

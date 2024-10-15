@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel
 
@@ -58,8 +58,22 @@ class IOParam(BaseModel):
     out_dir: str = "/data/DETECTOR_OUTPUT/"
 
 
-class DetectionParam(IOParam):
+class TaskParam(IOParam, dict):
+    input_file: List[str]
     algorithm: str
+
+    def __init__(self) -> None:
+        self.prev_param = dict()
+        self.defult_param = dict()
+
+    def update(self, **kwargs):
+        pass
+
+    def is_changed(self):
+        pass
+
+
+class DetectionTaskParam(TaskParam):
     config: str
     checkpoint: str
     device: str
@@ -75,10 +89,6 @@ class DetectionParam(IOParam):
     translation_threshold: Optional[float] = None
     rotation_threshold: Optional[float] = None
     iou: Optional[float] = None
-
-
-class DetectionInputParam(DetectionParam):
-    input_file: List[str]
 
 
 ObjectCategory = dict(

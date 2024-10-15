@@ -1,11 +1,11 @@
 from typing import Any
 
-from sqlalchemy import DateTime, Float, Integer, String, Text
+from sqlalchemy import DateTime, Float, Integer, String, Text, TypeDecorator, JSON
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from app.schema import DetectionInputParam
+from app.schema import TaskParam
 from log import logger
 
 
@@ -53,13 +53,27 @@ class BaseMd(DeclarativeBase):
             logger.error(f"{ex}")
 
 
+class FieldParam(TypeDecorator):
+    impl = JSON
+
+    def process_bind_param(self, value: TaskParam, dialect):
+        if value is None:
+            return {}
+        return value.model_dump_json()
+
+    def process_result_value(self, value: str, dialect):
+        if value is not None:
+            return TaskParam.model_validate_json(value)
+        return None
+
+
 class TaskMd(BaseMd):
     __tablename__ = "avt_task"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     task_type: Mapped[int] = mapped_column(Integer)
     creator: Mapped[str] = mapped_column(String)
     # task_param: Mapped[str] = mapped_column(String)
-    _task_param: Mapped[str] = mapped_column(String)
+    task_param: Mapped[str] = mapped_column(FieldParam)
 
     task_stat: Mapped[int] = mapped_column(Integer)
     worker_ip: Mapped[str] = mapped_column(String)
@@ -71,16 +85,6 @@ class TaskMd(BaseMd):
     updated_at: Mapped[str] = mapped_column(DateTime(timezone=False))
     user_id: Mapped[int] = mapped_column(Integer)
     task_id_ref: Mapped[int] = mapped_column(Integer)
-
-    @property
-    def task_param(self) -> DetectionInputParam:
-        if self._task_param:
-            return DetectionInputParam.model_validate_json(self._task_param)
-        return ""
-
-    @task_param.setter
-    def task_param(self, value: DetectionInputParam):
-        self._task_param = DetectionInputParam.model_dump_json(value)
 
 
 class AdsbMd(BaseMd):
