@@ -13,6 +13,7 @@ RUN <<EOF
     conda update conda -y
     conda init bash
     conda create -n avt-detection python=3.10 -y
+    conda create -n sar-mmdet3 python=3.10 -y
 EOF
 
 SHELL ["conda", "run", "-n", "avt-detection", "/bin/bash", "-c"]
@@ -42,4 +43,24 @@ RUN <<EOF
     cd ./LSKNet && pip install -v -e .
     pip cache purge
     conda clean --all -y
+EOF
+
+SHELL ["conda", "run", "-n", "sar-mmdet3", "/bin/bash", "-c"]
+
+# TODO: fill the package version
+RUN <<EOF
+    mkdir -p /workspace/sar/
+    cd /workspace/sar/
+
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    pip install -U openmim
+    mim install mmengine==0.10.5
+    mim install mmcv==2.2.0
+
+#Install mmdetection
+    rm -rf mmdetection
+    git clone -bv3.3.0 https://github.com/open-mmlab/mmdetection.git
+    cd mmdetection
+
+    pip install -e .
 EOF
