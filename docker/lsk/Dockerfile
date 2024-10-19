@@ -29,10 +29,12 @@ RUN <<EOF
     mkdir -p /workspace/sar/
     cd /workspace/sar/
 
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
     pip install -U openmim
     mim install mmengine==0.10.5
-    mim install mmcv==2.1.0
+    # mim install mmcv==2.1.0
+    pip install --upgrade mmcv==2.1.0 -f https://download.openmmlab.com/mmcv/dist/cu118/torch2.1/index.html
 
 #Install mmdetection
     rm -rf mmdetection
@@ -40,6 +42,8 @@ RUN <<EOF
     cd mmdetection
 
     pip install -e .
+    
+    cp -r ./sar/* /workspace/sar/mmdetection
 EOF
 
 SHELL ["conda", "run", "-n", "avt-detection", "/bin/bash", "-c"]
