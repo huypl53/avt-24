@@ -2,7 +2,7 @@
   "algorithm": "phat_hien_tau",
   "config": "./LSKNet/configs/roi_trans/roi_trans_swin_tiny_fpn_1x_dota_le90.py",
   "checkpoint": "./roi_trans_swin_tiny_fpn_1x_dota_le90-ddeee9ae.pth",
-  "device": "cuda:1",
+  "device": "cuda:0",
   "score_thr": 0.3,
   "patch_sizes": [1024],
   "patch_steps": [824],

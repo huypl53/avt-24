@@ -13,6 +13,35 @@ RUN <<EOF
     conda update conda -y
     conda init bash
     conda create -n avt-detection python=3.10 -y
+    conda create -n sar-mmdet3 python=3.10 -y
+EOF
+
+SHELL ["conda", "run", "-n", "sar-mmdet3", "/bin/bash", "-c"]
+
+# TODO: fill the package version
+RUN <<EOF
+    apt install software-properties-common -y
+    add-apt-repository ppa:ubuntu-toolchain-r/test -y
+    apt-get install gcc-9 g++-9 -y
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 60 --slave /usr/bin/g++ g++ /usr/bin/g++-9 
+    update-alternatives --install /usr/bin/x86_64-linux-gnu-gcc x86_64-linux-gnu-gcc /usr/bin/gcc-9 60 --slave /usr/bin/x86_64-linux-gnu-g++ x86_64-linux-gnu-g++ /usr/bin/g++-9 
+
+    mkdir -p /workspace/sar/
+    cd /workspace/sar/
+
+    # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    pip install torch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu118
+    pip install -U openmim
+    mim install mmengine==0.10.5
+    # mim install mmcv==2.1.0
+    pip install --upgrade mmcv==2.1.0 -f https://download.openmmlab.com/mmcv/dist/cu118/torch2.1/index.html
+
+#Install mmdetection
+    rm -rf mmdetection
+    git clone -bv3.3.0 https://github.com/open-mmlab/mmdetection.git
+    cd mmdetection
+
+    pip install -e .
 EOF
 
 SHELL ["conda", "run", "-n", "avt-detection", "/bin/bash", "-c"]
