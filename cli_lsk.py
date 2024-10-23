@@ -187,8 +187,8 @@ async def async_main():
 
     avail_task_types = [
         DetectionTaskType.SHIP,
-        DetectionTaskType.CHANGE,
-        DetectionTaskType.MILITARY,
+        # DetectionTaskType.CHANGE,
+        # DetectionTaskType.MILITARY,
     ]
     _num_task_types = len(avail_task_types)
     _i = 0

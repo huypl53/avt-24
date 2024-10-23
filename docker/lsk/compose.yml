@@ -11,6 +11,7 @@ services:
     image: lsk-lsknet:latest
     volumes:
       - ../../:/workspace/avt-detection
+      - ../../../data/:/workspace/data
     environment:
       - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
     container_name: lsk-base
@@ -29,7 +30,8 @@ services:
       # file: base.yml
       service: lskbase
     container_name: avt_ship_detection
-    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type SHIP"
+    # command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type SHIP"
+    command: tail -f /dev/null
     profiles: ["ship"]
 
   change_service:
@@ -37,7 +39,8 @@ services:
       # file: base.yml
       service: lskbase
     container_name: avt_change_detection
-    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type CHANGE"
+    # command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type CHANGE"
+    command: conda run --no-capture-output -n sar-mmdet3 bash -c "cd /workspace/sar/mmdetection && "
     profiles: ["change"]
 
   military_service:
