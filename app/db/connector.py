@@ -7,9 +7,9 @@ from app.db.setting import settings
 
 SESSION_FACTORY_STORE = dict()
 
-print(f"Connection string: {settings.asyncpg_url.unicode_string()}")
+print(f"Connection string: {settings.sql_url.unicode_string()}")
 create_engine = lambda: create_async_engine(
-    settings.asyncpg_url.unicode_string(),
+    settings.sql_url.unicode_string(),
     future=True,
     # echo="debug",
     # pool_size=20,                # Max number of connections in the pool
