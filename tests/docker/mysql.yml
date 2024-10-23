@@ -1,0 +1,23 @@
+version: "3"
+
+services:
+  # MySQL
+  db:
+    container_name: avt_test_mysql
+    image: mysql:8.2
+    # command: mysqld --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: abc123
+      MYSQL_DATABASE: avt_management
+      MYSQL_USER: postgres
+      MYSQL_PASSWORD: abc123
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "127.0.0.1:3307:3306"
+    # volumes:
+    #   - "../db/mysql/data:/var/lib/mysql"
+    #   - "../db/mysql/my.cnf:/etc/mysql/conf.d/my.cnf"
+    #   # - "../db/mysql/sql:/docker-entrypoint-initdb.d"
+    #   - "./scripts/init:/docker-entrypoint-initdb.d"

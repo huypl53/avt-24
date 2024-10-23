@@ -47,11 +47,11 @@ cfg.test_dataloader.dataset.data_prefix = dict(img="test/")
 cfg.test_dataloader.dataset.pipeline[1]["scale"] = (width, height)
 
 # ------------------------------------------------------
-cfg.val_evaluator.type = "Accuracy"
+cfg.val_evaluator.type = "VOCMetric"
 # cfg.val_evaluator.ann_file = "/workspace/data/RadarStation/valid/_annotations.coco.json"
 # cfg.val_evaluator.metric=['segm']
 
-cfg.test_evaluator.type = "Accuracy"
+cfg.test_evaluator.type = "VOCMetric"
 # cfg.test_evaluator.ann_file = "/workspace/data/RadarStation/test/_annotations.coco.json"
 # cfg.test_evaluator.metric=['segm']
 # ------------------------------------------------------

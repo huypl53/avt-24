@@ -6,3 +6,6 @@ pydantic_settings==2.3.4
 sqlalchemy==2.0.31
 matplotlib==3.9.2 
 asyncpg==0.29.0
+pytest==8.3.3
+typing_extensions==4.12.2
+asyncmy==0.2.9
