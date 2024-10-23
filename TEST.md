@@ -15,6 +15,6 @@ MODE=test pytest tests/test_connection.py --log-cli-level=INFO
 
 
 # generate database
-MODE=test python
+MODE=test python tests/db_gen.py
 
 ```
