@@ -1,15 +1,3 @@
 {
-  "algorithm": "phat_hien_thay_doi",
-  "config": "./LSKNet/configs/roi_trans/roi_trans_swin_tiny_fpn_1x_dota_le90.py",
-  "checkpoint": "./roi_trans_swin_tiny_fpn_1x_dota_le90-ddeee9ae.pth",
-  "device": "cuda:0",
-  "score_thr": 0.3,
-  "patch_sizes": [1024],
-  "patch_steps": [824],
-  "img_ratios": [1],
-  "merge_iou_thr": 0.1,
-  "consecutive_thr": 0.2,
-  "translation_threshold": 3,
-  "rotation_threshold": 3,
-  "iou": 0.12
+  "algorithm": "phat_hien_thay_doi"
 }

@@ -56,6 +56,7 @@ class EnhancementOutput(BaseModel):
 
 class IOParam(BaseModel):
     out_dir: str = "/data/DETECTOR_OUTPUT/"
+    input_file: List[str]
 
 
 class DetectionParam(IOParam):
@@ -78,7 +79,7 @@ class DetectionParam(IOParam):
 
 
 class DetectionInputParam(DetectionParam):
-    input_file: List[str]
+    pass
 
 
 ObjectCategory = dict(
@@ -116,3 +117,7 @@ class ExtractedObject(BaseModel):
     coords: List[float]
     lb_path: Optional[str]
     class_id: Optional[str] = None
+
+
+class ChangeDetectionParam(IOParam):
+    pass
