@@ -1,5 +1,5 @@
 {
   "algorithm": "phat_hien_thay_doi",
-  "mask": "",
+  "mask_file": "",
   "input_file":[]
 }

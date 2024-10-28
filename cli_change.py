@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import json
 import multiprocessing
@@ -11,10 +10,7 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
-import torch
 from dictdiffer import diff
-from mmdet.apis import init_detector
-from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import select, text
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,32 +20,16 @@ from app.model.task import TaskMd
 from app.schema import (
     ChangeDetectionParam,
     ChangeDetectionParam,
-    DetectionParam,
     DetectionTaskType,
-    ExtractedObject,
-    ObjectCategory,
 )
 from app.service.binio import (
-    ftpTransfer,
     read_ftp_bin_image,
+    read_ftp_np_image,
     write_ftp_image,
-    write_text_file,
 )
-from core import Worker
-from core.box_record import BoxDetect, BoxRecord
-from core.ship.adsb import check_adsb
-from core.ship.classifier import classify_ship
 from log import logger
 from utils.cfar import CFAR2D, CFARParams
-from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
-from utils.raster import (
-    angle_to_bearings,
-    latlong2meter,
-    pixel_point_to_lat_long,
-    read_tif_meta,
-)
 from utils.transform import gen_fft_diff_mask, mask2image
-
 
 cfar_params = CFARParams(
     guard_cells=(1, 1),  # Smaller guard cells due to matrix size
@@ -170,7 +150,6 @@ async def async_main():
 
     current_task = None
     bname: str = ""
-    save_dir: str = ""
     task_type = DetectionTaskType.CHANGE
 
     config = open("./config/change.json", "r").read()
@@ -179,17 +158,13 @@ async def async_main():
     while True:
 
         input_params: ChangeDetectionParam = ChangeDetectionParam(
-            **pre_param_conf.model_dump(),
-            input_file=[""],
+            **pre_param_conf.model_dump()
         )
         extra_mesg = ""
-        # counter = 0
         a_session = anext(get_db("main_task"))
         session = await a_session
-        # db_thread: DbProcess = None
         update_process: multiprocessing.Process | None = None
         stop_event: multiprocessing.synchronize.Event | None = None
-        task_infer_image_success = False
 
         def _update_process_func(t: TaskMd):
             nonlocal update_process, stop_event
@@ -262,7 +237,7 @@ async def async_main():
             return im, True
 
         async def _update_task(msg: str = "", stat: int | None = None):
-            nonlocal session, current_task
+            nonlocal session, current_task, extra_mesg
             task_stat = 0
             if "Expected all tensors to be on the same device" in msg:
                 pass
@@ -276,7 +251,7 @@ async def async_main():
             try:
                 if not current_task:
                     return
-                await update_task_info(current_task, msg, session, task_stat)
+                await update_task_info(current_task, f'{msg}\n{extra_mesg}' if msg else msg, session, task_stat)
             except:
                 stop_update_task_continuously()
 
@@ -365,10 +340,11 @@ async def async_main():
                             continue
                         fft_diff = gen_fft_diff_mask(pre_im, im, 64, 32)
                         if len(features):
-                            pre_size = features[0].shape[:2][::-1]
-                            size = fft_diff.shape[:2][::-1]
+                            pre_size = np.array(features[0].shape[:2][::-1]
+                                        )                            
+                            size = np.array(fft_diff.shape[:2][::-1])
                             if not (size == pre_size).all():
-                                fft_diff = cv2.resize(pre_size)
+                                fft_diff = cv2.resize(fft_diff, pre_size)
 
                                 if len(features) == 1:
                                     extra_mesg += f". Got discriminated image sizes"
@@ -376,7 +352,7 @@ async def async_main():
                         features.append(fft_diff)
                         pre_im = im
                     features = np.mean(features, axis=0)
-                except e:
+                except Exception as e:
                     await _update_task(f"Got error: {e}", 0)
 
                 if len(failed_images):
@@ -392,20 +368,26 @@ async def async_main():
                 filter_image_path = input_params.mask_file
                 if filter_image_path:
                     try:
-                        image_filter = read_ftp_bin_image(filter_image_path)
+                        image_filter = read_ftp_np_image(filter_image_path)
+                        if len(image_filter.shape) > 2:
+                            image_filter = cv2.cvtColor(image_filter, cv2.COLOR_BGR2GRAY)
                         image_filter = image_filter != 0
+
+                        filter_size = np.array( image_filter.shape[:2][::-1])
+                        mask_size = np.array(mask_img.shape[:2][::-1])
+                        if not (mask_size == filter_size).all():
+                            image_filter = cv2.resize(image_filter, mask_size)
+                            extra_mesg += '. Mask filter has different size'
                         mask_img = mask_img * image_filter
-                    except e:
+                    except Exception as e:
                         extra_mesg += f'. Reading mask filter failed at {filter_image_path}'
                         pass
 
                 bname = os.path.basename(image_files[0]).rsplit(".", 1)[0]
-                file_path = os.path.join(input_params.out_dir, bname) + '.png'
+                file_path = os.path.join(input_params.out_dir, bname) + '_changes.png'
                 write_ftp_image(mask_img, '.png', file_path)
                 output_dict = dict({
-                    {
-                        "output_file": file_path
-                    }
+                    "output_file": file_path
                 })
                 
                 t.task_output = json.dumps(output_dict)
