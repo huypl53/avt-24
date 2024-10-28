@@ -120,4 +120,5 @@ class ExtractedObject(BaseModel):
 
 
 class ChangeDetectionParam(IOParam):
+    mask_file: str
     pass

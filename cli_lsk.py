@@ -670,6 +670,7 @@ async def async_main():
             session = await a_session
 
         finally:
+            stop_update_task_continuously()
             await asyncio.sleep(5)
 
         print("----------")
