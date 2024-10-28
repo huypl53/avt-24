@@ -61,7 +61,7 @@ cfg.test_evaluator.ann_file = "/workspace/data/SARscope/test/_annotations.coco.j
 cfg.train_cfg.max_epochs = max_epochs
 cfg.optim_wrapper.type = "OptimWrapper"
 cfg.optim_wrapper.optimizer = dict(
-    type="AdamW", lr=0.001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999)
+    type="AdamW", lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999)
 )
 cfg.default_hooks = dict(
     logger=dict(type="LoggerHook", interval=200),
@@ -75,4 +75,5 @@ with open(config, "w") as f:
     f.write(cfg.pretty_text)
 
 # train
-# python tools/train.py configs/atss/sar_atss_r101_fpn_1x_coco_640_640.py
+# python /kaggle/working/mmdetection/tools/train.py {config}
+

@@ -18,6 +18,8 @@ classes = (
 )
 data_root = "/workspace/data/RadarStation"
 # -----------------------------------------------------
+cfg.dataset_type = dataset_type
+cfg.data_root = data_root
 cfg.model.bbox_head.num_classes = num_classes
 # -----------------------------------------------------
 cfg.train_pipeline[2]["scale"] = (width, height)
@@ -26,7 +28,10 @@ cfg.test_pipeline[1]["scale"] = (width, height)
 cfg.train_dataloader.dataset.type = dataset_type
 cfg.train_dataloader.dataset.metainfo = dict(classes=classes)
 cfg.train_dataloader.dataset.data_root = data_root
-cfg.train_dataloader.dataset.ann_file = "/workspace/data/RadarStation/train/train.txt"
+cfg.train_dataloader.dataset.ann_file = ('train/train.txt')
+# cfg.train_dataloader.dataset.ann_file = (
+#     "/workspace/data/RadarStation/train/_annotations.coco.json"
+# )
 cfg.train_dataloader.dataset.data_prefix = dict(img="train/")
 cfg.train_dataloader.batch_size = batch_size
 cfg.train_dataloader.dataset.pipeline[2]["scale"] = (width, height)
@@ -34,25 +39,30 @@ cfg.train_dataloader.dataset.pipeline[2]["scale"] = (width, height)
 cfg.val_dataloader.dataset.type = dataset_type
 cfg.val_dataloader.dataset.metainfo = dict(classes=classes)
 cfg.val_dataloader.dataset.data_root = data_root
-cfg.val_dataloader.dataset.ann_file = "/workspace/data/RadarStation/valid/valid.txt"
+cfg.val_dataloader.dataset.ann_file = ('valid/valid.txt')
+# cfg.val_dataloader.dataset.ann_file = (
+#     "/workspace/data/RadarStation/valid/_annotations.coco.json"
+# )
 cfg.val_dataloader.dataset.data_prefix = dict(img="valid/")
 cfg.val_dataloader.dataset.pipeline[1]["scale"] = (width, height)
 # -----------------------------------------------------
 cfg.test_dataloader.dataset.type = dataset_type
 cfg.test_dataloader.dataset.metainfo = dict(classes=classes)
 cfg.test_dataloader.dataset.data_root = data_root
-cfg.test_dataloader.dataset.ann_file = "/workspace/data/RadarStation/test/test.txt"
+cfg.test_dataloader.dataset.ann_file = ('test/test.txt')
+# cfg.test_dataloader.dataset.ann_file = (
+#     "/workspace/data/RadarStation/test/_annotations.coco.json"
+# )
 
 cfg.test_dataloader.dataset.data_prefix = dict(img="test/")
 cfg.test_dataloader.dataset.pipeline[1]["scale"] = (width, height)
 
 # ------------------------------------------------------
-cfg.val_evaluator.type = "VOCMetric"
-# cfg.val_evaluator.ann_file = "/workspace/data/RadarStation/valid/_annotations.coco.json"
-# cfg.val_evaluator.metric=['segm']
 
-cfg.test_evaluator.type = "VOCMetric"
-# cfg.test_evaluator.ann_file = "/workspace/data/RadarStation/test/_annotations.coco.json"
+cfg.val_evaluator = dict(type='VOCMetric', metric='mAP', eval_mode='11points')
+cfg.test_evaluator  = dict(type='VOCMetric', metric='mAP', eval_mode='11points')
+
+# cfg.test_evaluator.ann_file = "/workspace/data/RadarStation/valid/test.txt"
 # cfg.test_evaluator.metric=['segm']
 # ------------------------------------------------------
 cfg.train_cfg.max_epochs = max_epochs
@@ -73,3 +83,5 @@ with open(config, "w") as f:
 
 # train
 # python tools/train.py configs/atss/military_atss_r101_fpn_1x_coco_640_640.py
+
+
