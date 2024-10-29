@@ -424,20 +424,4 @@ async def async_main():
 
 
 if __name__ == "__main__":
-
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument(
-    #     "--task_type",
-    #     type=lambda v: DetectionTaskType[v],
-    #     choices=list(DetectionTaskType),
-    #     required=True,
-    #     help="Task type",
-    # )
-    # args, _ = parser.parse_known_args()
-    # asyncio.run(async_main(args.task_type))
-
     asyncio.run(async_main())
-
-    # pre_param_conf = load_task_config(args.task_type)
-    # worker = Worker()
-    # asyncio.run(worker.start(args.task_type, pre_param_conf))
