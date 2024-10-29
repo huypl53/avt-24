@@ -115,10 +115,10 @@ class ExtractedObject(BaseModel):
     id: str
     path: str
     coords: List[float]
-    lb_path: Optional[str]
+    lb_path: Optional[str] = None
     class_id: Optional[str] = None
 
 
 class ChangeDetectionParam(IOParam):
-    mask_file: str
+    mask_file: Optional[str] = None
     pass

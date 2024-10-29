@@ -369,15 +369,15 @@ async def async_main():
                 if filter_image_path:
                     try:
                         image_filter = read_ftp_np_image(filter_image_path)
-                        if len(image_filter.shape) > 2:
-                            image_filter = cv2.cvtColor(image_filter, cv2.COLOR_BGR2GRAY)
-                        image_filter = image_filter != 0
-
                         filter_size = np.array( image_filter.shape[:2][::-1])
                         mask_size = np.array(mask_img.shape[:2][::-1])
                         if not (mask_size == filter_size).all():
                             image_filter = cv2.resize(image_filter, mask_size)
                             extra_mesg += '. Mask filter has different size'
+                        if len(image_filter.shape) > 2:
+                            image_filter = cv2.cvtColor(image_filter, cv2.COLOR_BGR2GRAY)
+
+                        image_filter = image_filter != 0
                         mask_img = mask_img * image_filter
                     except Exception as e:
                         extra_mesg += f'. Reading mask filter failed at {filter_image_path}'
