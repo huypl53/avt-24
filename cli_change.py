@@ -8,6 +8,7 @@ import traceback
 from datetime import datetime
 from typing import Dict, List, Tuple
 
+from core.raster import RasterImage
 import cv2
 import numpy as np
 from dictdiffer import diff
@@ -29,6 +30,7 @@ from app.service.binio import (
 )
 from log import logger
 from utils.cfar import CFAR2D, CFARParams
+from utils.processing import find_boundary_keypoints
 from utils.transform import gen_fft_diff_mask, mask2image
 
 cfar_params = CFARParams(
@@ -217,7 +219,7 @@ async def async_main():
                 }
             )
 
-        async def _process_image(input_file: str) -> Tuple[None | np.ndarray, bool]:
+        async def _process_image(input_file: str, return_bin: bool = False) -> Tuple[None | np.ndarray, bool]:
             # nonlocal bname, save_dir, input_params, task_infer_image_success
             # bname = os.path.basename(input_file).rsplit(".", 1)[0]
             # save_dir = os.path.join(input_params.out_dir, bname)
@@ -232,6 +234,8 @@ async def async_main():
                 await _update_task(f"Read image failed at {input_file}")
                 return None, False
 
+            if return_bin:
+                return bin_im, True
             image = np.asarray(bytearray(bin_im), dtype="uint8")
             im = cv2.imdecode(image, cv2.IMREAD_COLOR)
             return im, True
@@ -324,33 +328,33 @@ async def async_main():
                 pre_im: None | np.ndarray = None
                 features: List[np.ndarray] = []
 
+                raster_images: List[RasterImage] = []
                 try:
                     image_files = task_params.input_file
                     if not len(image_files):
                         _update_task(f"Images path must be provided", 0)
                         continue
                     for im_path in image_files:
-                        im, success = await _process_image(im_path)
-                        if not success:
+                        bin_im, success = await _process_image(im_path, return_bin=True)
+                        if not success or bin_im is None:
                             failed_images.append(im_path)
                             continue
+                        raster_images.append(RasterImage(bin_im))
 
+                    raster_intersection = RasterImage.find_intersection(raster_images[0], raster_images[1:])
+                    for raster_image in raster_images:
+                        cropped_im, _ = raster_image.crop_raster(raster_intersection)
+                        if not _:
+                            continue
+                        im = cropped_im.numpy
                         if pre_im is None:
                             pre_im = im
                             continue
                         fft_diff = gen_fft_diff_mask(pre_im, im, 64, 32)
-                        if len(features):
-                            pre_size = np.array(features[0].shape[:2][::-1]
-                                        )                            
-                            size = np.array(fft_diff.shape[:2][::-1])
-                            if not (size == pre_size).all():
-                                fft_diff = cv2.resize(fft_diff, pre_size)
-
-                                if len(features) == 1:
-                                    extra_mesg += f". Got discriminated image sizes"
-
                         features.append(fft_diff)
                         pre_im = im
+                    if len(features) == 0:
+                        raise ValueError("No raster feature found")
                     features = np.mean(features, axis=0)
                 except Exception as e:
                     await _update_task(f"Got error: {e}", 0)
@@ -358,12 +362,13 @@ async def async_main():
                 if len(failed_images):
                     extra_mesg += f' Read image failed at: {";".join(failed_images)}'
 
-                feature_image = mask2image(fft_diff)
+                feature_image = mask2image(features)
                 top_detections = cfar_detector.get_top_detections(feature_image)
                 mask_img = np.zeros_like(fft_diff)
 
                 for row, col, value in top_detections:
-                    mask_img[row, col] = value
+                    # TODO: binary mask
+                    mask_img[row, col] = 255
 
                 filter_image_path = input_params.mask_file
                 if filter_image_path:
@@ -383,17 +388,22 @@ async def async_main():
                         extra_mesg += f'. Reading mask filter failed at {filter_image_path}'
                         pass
 
+                intersection_np = raster_intersection.numpy
+                sized_mask_img = cv2.resize(mask_img, intersection_np.shape[:2][::-1])
+                sized_mask_img = cv2.normalize(sized_mask_img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                keypoint_list = find_boundary_keypoints(sized_mask_img)
+                lat_lon_keypoints = [[raster_intersection.pixel_to_coords(x, y) for x, y in kp] for kp in keypoint_list]
                 bname = os.path.basename(image_files[0]).rsplit(".", 1)[0]
                 file_path = os.path.join(input_params.out_dir, bname) + '_changes.png'
-                write_ftp_image(mask_img, '.png', file_path)
+                write_ftp_image(sized_mask_img, '.png', file_path)
+
                 output_dict = dict({
-                    "output_file": file_path
+                    "output_file": file_path,
+                    "output": lat_lon_keypoints
                 })
                 
                 t.task_output = json.dumps(output_dict)
-
                 logger.info(f"Process task id = {t.id} successfully")
-
                 stop_update_task_continuously()
                 await asyncio.sleep(2)
                 await _update_task(stat=1)
