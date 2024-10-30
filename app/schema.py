@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import List, Optional, Union
 
 from pydantic import BaseModel
 
@@ -59,6 +59,10 @@ class IOParam(BaseModel):
     input_file: List[str]
 
 
+class ImageType(Enum):
+    EO = "EO"
+    SAR = "SAR"
+
 class DetectionParam(IOParam):
     algorithm: str
     config: str
@@ -70,6 +74,7 @@ class DetectionParam(IOParam):
     patch_steps: List[int]
     img_ratios: List[float]
     merge_iou_thr: float
+    image_type: str
 
     # DetectionTaskType.change
     consecutive_thr: Optional[float] = None  #

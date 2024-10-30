@@ -26,6 +26,7 @@ from app.schema import (
     DetectionParam,
     DetectionTaskType,
     ExtractedObject,
+    ImageType,
     ObjectCategory,
 )
 from app.service.binio import (
@@ -36,8 +37,6 @@ from app.service.binio import (
 )
 from core import Worker
 from core.box_record import BoxDetect, BoxRecord
-from core.ship.adsb import check_adsb
-from core.ship.classifier import classify_ship
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
 from utils.raster import (
@@ -153,7 +152,7 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
 def load_task_config(task_type: DetectionTaskType) -> DetectionParam | None:
     match task_type:
         case DetectionTaskType.SHIP:
-            config = open("./config/ship.json", "r").read()
+            config = open("./config/ship_sar.json", "r").read()
             return DetectionParam.model_validate_json(config)
         case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
@@ -203,7 +202,6 @@ async def async_main():
             return
         input_params: DetectionInputParam = DetectionInputParam(
             **pre_param_conf.model_dump(),
-            input_file=[""],
         )
         extra_mesg = ""
         # counter = 0
@@ -380,8 +378,8 @@ async def async_main():
                         .where(TaskMd.task_stat == 1)
                         .order_by(TaskMd.task_stat.desc())
                     )
-                    tasks = await query_tasks_by_stmt(stmt_ref_tasks, session)
-                    if len(tasks) == 0:
+                    sub_tasks = await query_tasks_by_stmt(stmt_ref_tasks, session)
+                    if len(sub_tasks) == 0:
                         msg = "Waiting for task id = {}".format(t.task_id_ref)
                         await _update_task(msg)
                         continue
@@ -394,7 +392,7 @@ async def async_main():
                 if 'image_type' not in input_param_dict:
                     await _update_task("<image_type> field is requried!", 0)
                     continue
-                if input_param_dict['image_type'] != 'EO':
+                if input_param_dict['image_type'] != 'SAR':
                     continue
                 if "input_file" not in input_param_dict:
                     await _update_task("<input_file> field is requried!", 0)
@@ -517,14 +515,14 @@ async def async_main():
                                 else:
                                     cls_name = str(class_id)
                             else:
-                                try:
-                                    if class_id == 1:
-                                        cls_name = classify_ship(p)
-                                    else:
-                                        cls_name = ObjectCategory[class_id]
-                                except:
-                                    extra_mesg += "Classify ship failed!"
-                                    cls_name = str(DetectionTaskType.SHIP.value)
+                                # try:
+                                #     if class_id == 1:
+                                #         cls_name = classify_ship(p)
+                                #     else:
+                                #         cls_name = ObjectCategory[class_id]
+                                # except:
+                                    # extra_mesg += "Classify ship failed!"
+                                cls_name = 'ship'
 
                             detect_obj_id = f"{im_th:03d}-{lb_im_id}"
                             image_detect_results.append(
