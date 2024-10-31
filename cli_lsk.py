@@ -200,7 +200,6 @@ async def async_main():
             return
         input_params: DetectionInputParam = DetectionInputParam(
             **pre_param_conf.model_dump(),
-            input_file=[""],
         )
         extra_mesg = ""
         # counter = 0
