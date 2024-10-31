@@ -1,22 +1,9 @@
 from app.db.connector import get_db
 from app.schema import DetectionParam, DetectionTaskType
 
-import argparse
-import asyncio
-import json
-import multiprocessing
 import multiprocessing.synchronize
-import os
-import re
-import traceback
 from typing import Dict, List, Tuple
 
-import cv2
-import numpy as np
-from dictdiffer import diff
-from core import Worker
-from mmdet.apis import init_detector
-from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,14 +16,6 @@ from app.schema import (
     DetectionInputParam,
     DetectionParam,
     DetectionTaskType,
-    ExtractedObject,
-    ObjectCategory,
-)
-from app.service.binio import (
-    ftpTransfer,
-    read_ftp_bin_image,
-    write_ftp_image,
-    write_text_file,
 )
 
 

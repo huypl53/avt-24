@@ -203,3 +203,17 @@ def downsample_image(img: np.ndarray, rate_x: float, rate_y: float):
     return cv2.resize(
         img, (0, 0), fx=rate_x, fy=rate_y, interpolation=cv2.INTER_NEAREST
     )
+
+
+def xywh2xyxyxyxy(bbox):
+    """Convert bbox coordinates from (cx, cy, w, h) to (x1, y1, x2, y2).
+
+    Args:
+        bbox (Tensor): Shape (n, 4) for bboxes.
+
+    Returns:
+        Tensor: Converted bboxes.
+    """
+    cx, cy, w, h = bbox.split((1, 1, 1, 1), dim=-1)
+    bbox_new = [(cx - 0.5 * w), (cy - 0.5 * h), (cx + 0.5 * w), (cy + 0.5 * h)]
+    return torch.cat(bbox_new, dim=-1)

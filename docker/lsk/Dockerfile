@@ -26,6 +26,10 @@ RUN <<EOF
     update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 60 --slave /usr/bin/g++ g++ /usr/bin/g++-9 
     update-alternatives --install /usr/bin/x86_64-linux-gnu-gcc x86_64-linux-gnu-gcc /usr/bin/gcc-9 60 --slave /usr/bin/x86_64-linux-gnu-g++ x86_64-linux-gnu-g++ /usr/bin/g++-9 
 
+    pip install -r requirements/lsk.txt
+    pip install -r requirements/app.txt
+    pip install -r requirements/mmdet3.txt
+
     mkdir -p /workspace/sar/
     cd /workspace/sar/
 

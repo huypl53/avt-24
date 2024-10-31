@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import json
 import multiprocessing
@@ -14,7 +13,9 @@ import numpy as np
 import torch
 from dictdiffer import diff
 from mmdet.apis import init_detector
-from mmrotate.apis import inference_detector_by_patches
+
+# from mmrotate.apis import inference_detector_by_patches
+from utils.infer_detect import inference_detector_by_patches
 from sqlalchemy import select, text
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +27,6 @@ from app.schema import (
     DetectionParam,
     DetectionTaskType,
     ExtractedObject,
-    ImageType,
     ObjectCategory,
 )
 from app.service.binio import (
@@ -35,12 +35,8 @@ from app.service.binio import (
     write_ftp_image,
     write_text_file,
 )
-from core import Worker
-from core.box_record import BoxDetect, BoxRecord
 from log import logger
-from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
 from utils.raster import (
-    angle_to_bearings,
     latlong2meter,
     pixel_point_to_lat_long,
     read_tif_meta,
@@ -67,22 +63,6 @@ def parse_param_dict(param_str: str) -> Dict:
         if re.search(r'^"\[.*\]"$', v):
             param[k] = v[1:-1]
     return param
-
-
-def stringify_dict_list(param: Dict):
-    for k, v in param.items():
-        if isinstance(v, list):
-            param[k] = f'"{json.dumps(v)}"'
-
-
-def filter_3d_array(array3d: np.ndarray, filter2d: np.ndarray) -> np.ndarray:
-    output = np.array(
-        [
-            [bbox for bbox, mask in zip(class_boxes, bbox_masks) if mask]
-            for class_boxes, bbox_masks in zip(array3d, filter2d)
-        ]
-    )
-    return output
 
 
 def update_task_chronologically(
@@ -273,7 +253,9 @@ async def async_main():
                         input_params.config,
                         input_params.checkpoint,
                         device=input_params.device,
+                        cfg_options={},
                     )
+
                     reload_model = False
                 except Exception as e:
                     clear_model(model)
@@ -331,10 +313,8 @@ async def async_main():
                 result = inference_detector_by_patches(
                     model,
                     im,
-                    input_params.patch_sizes,
-                    input_params.patch_steps,
-                    input_params.img_ratios,
-                    input_params.merge_iou_thr,
+                    input_params.patch_sizes[0],
+                    merge_iou_thr=input_params.merge_iou_thr,
                 )  # inference for batch
 
                 task_infer_image_success = True
@@ -383,16 +363,15 @@ async def async_main():
                         msg = "Waiting for task id = {}".format(t.task_id_ref)
                         await _update_task(msg)
                         continue
-                    pass
                 msg = "Task is being processed"
                 t.process_id = os.getpid()
                 await _update_task(msg)
 
                 input_param_dict = parse_param_dict(t.task_param)
-                if 'image_type' not in input_param_dict:
+                if "image_type" not in input_param_dict:
                     await _update_task("<image_type> field is requried!", 0)
                     continue
-                if input_param_dict['image_type'] != 'SAR':
+                if input_param_dict["image_type"] != "SAR":
                     continue
                 if "input_file" not in input_param_dict:
                     await _update_task("<input_file> field is requried!", 0)
@@ -401,13 +380,10 @@ async def async_main():
                 _update_process_func(t)
                 _update_param(input_param_dict)
 
-                # t.task_param = stringify_dict_list(input_params.model_dump())
                 t.task_param = input_params.model_dump_json(exclude_none=True)
                 await _update_task()
                 detect_results = []
-                detection_history: List[List[List[BoxDetect]]] = [
-                    [] for _ in range(len(input_params.input_file))
-                ]
+
                 for im_th, image_path in enumerate(input_params.input_file):
                     image_id = image_path
                     _, success = await _process_image(image_path)
@@ -416,139 +392,112 @@ async def async_main():
                     classes_results, success = await _infer_image_params()
                     if not success:
                         continue
-                    if classes_results is None or not len(classes_results):
-                        # await _update_task("No detection", 1)
+                    bboxes = classes_results.pred_instances.bboxes
+                    labels = classes_results.pred_instances.labels
+                    scores = classes_results.pred_instances.scores
+                    bboxes = bboxes.detach().cpu().numpy()
+                    labels = labels.detach().cpu().numpy()
+                    scores = scores.detach().cpu().numpy()
+
+                    valid_idx = scores > input_params.score_thr
+                    bboxes = bboxes[valid_idx]
+                    labels = labels[valid_idx]
+                    scores = scores[valid_idx]
+
+                    if not len(bboxes):
+                        await _update_task("No detection", 0)
                         continue
 
-                    # TODO: handle score thresh
-                    # classes_results = np.array(classes_results)
                     image_detect_results: List[Dict] = []
-                    for class_id, class_rbboxes in enumerate(classes_results):
-                        detection_history[im_th].append([])
-                        # output = result[:, result[..., -1] > input_params.score_thr]
-                        output = np.array(class_rbboxes)
-                        output = output[output[..., -1] > input_params.score_thr]
+                    if not len(bboxes):
+                        continue
+                    # xyxyxyxy = xywh2xyxyxyxy(bboxes)
+                    # valid_idx: List[int] = []
+                    patches: List[np.ndarray] = []
+                    for i, box in enumerate(bboxes):
 
-                        if not len(output):
-                            continue
-                        xyxyxyxy = xywhr2xyxyxyxy(output)
-                        output[..., 4] = np.degrees(output[..., 4])
-                        rbboxes = list(
+                        (
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                        ) = [int(v) for v in box]
+                        patch = im[y1:y2, x1:x2, ...]
+                        patches.append(patch)
+
+                    tif_meta = read_tif_meta(tmp_im_path)
+                    try:
+                        centers = np.zeros((len(bboxes), 2))
+                        centers[..., 0] = (bboxes[..., 0] + bboxes[..., 2]) / 2
+                        centers[..., 1] = (bboxes[..., 1] + bboxes[..., 3]) / 2
+                        lat_long_center = pixel_point_to_lat_long(centers, tif_meta)
+                        flat_xy = bboxes.reshape(-1, 2)
+                        latlong_xy = pixel_point_to_lat_long(flat_xy, tif_meta)
+                        latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4)
+                        lat_long_wh = np.array(
                             [
                                 [
-                                    int(box[0]),
-                                    int(box[1]),
-                                    int(box[2]),
-                                    int(box[3]),
-                                    box[4],
+                                    latlong2meter(
+                                        row[1],
+                                        row[0],
+                                        row[1],
+                                        row[2],
+                                    ),
+                                    latlong2meter(
+                                        row[1],
+                                        row[2],
+                                        row[3],
+                                        row[2],
+                                    ),
                                 ]
-                                for box in output
+                                for row in latlong_xyxyxyxy
                             ]
                         )
-                        valid_idx: List[int] = []
-                        patches: List[np.ndarray] = []
-                        for i, box in enumerate(rbboxes):
-                            patch = crop_rotated_rectangle(
-                                im, box
-                            )  # patch if None if crop failed
-                            if patch is not None:
-                                patches.append(patch)
-                                valid_idx.append(i)
-                        output = output[valid_idx]
-                        xyxyxyxy = xyxyxyxy[valid_idx]
-                        flat_xy = xyxyxyxy.reshape(-1, 2)
-
-                        output = angle_to_bearings(output, 4)
-
-                        tif_meta = read_tif_meta(tmp_im_path)
-                        try:
-                            lat_long_center = pixel_point_to_lat_long(
-                                output[..., 0:2], tif_meta
-                            )
-                            latlong_xy = pixel_point_to_lat_long(flat_xy, tif_meta)
-                            latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4, 2)
-                            lat_long_wh = np.array(
-                                [
-                                    [
-                                        latlong2meter(
-                                            row[i][1],
-                                            row[i][0],
-                                            row[i + 1][1],
-                                            row[i + 1][0],
-                                        )
-                                        for i in range(2)
-                                    ]
-                                    for row in latlong_xyxyxyxy
-                                ]
-                            )
-                        except Exception:
-                            await _update_task("Read crs from image failed!")
-                            continue
-                        lat_long_coords = np.concatenate(
-                            (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
+                    except Exception:
+                        await _update_task("Read crs from image failed!")
+                        continue
+                    expanded_scores = np.expand_dims(scores, axis=-1)
+                    lat_long_coords = np.concatenate(
+                        (lat_long_center, lat_long_wh, expanded_scores), axis=-1
+                    )
+                    for box_i, (p, c) in enumerate(zip(patches, lat_long_coords)):
+                        class_id = labels[box_i]
+                        lb_im_id = f"{class_id:03d}_{box_i:04d}"
+                        path = os.path.join(save_dir, lb_im_id)
+                        patch_lb_path = path + ".txt"
+                        patch_im_path = path + ".png"
+                        # Box cx, cy, w, h, angle
+                        coords = c.tolist()
+                        write_ftp_image(p, ".png", patch_im_path)
+                        write_text_file(
+                            " ".join([str(i) for i in coords]), patch_lb_path
                         )
-                        if task_type == DetectionTaskType.SHIP:
-                            # match_adsb_indices = await check_adsb(lat_long_coords)
-                            # if match_adsb_indices is not None:
-                            #     patches = [
-                            #         p
-                            #         for i, p in enumerate(patches)
-                            #         if i in match_adsb_indices
-                            #     ]
-                            #     lat_long_coords = lat_long_coords[match_adsb_indices]
-                            pass
-                        for box_i, (p, c) in enumerate(zip(patches, lat_long_coords)):
-                            lb_im_id = f"{class_id:03d}_{box_i:04d}"
-                            path = os.path.join(save_dir, lb_im_id)
-                            patch_lb_path = path + ".txt"
-                            patch_im_path = path + ".png"
-                            # Box cx, cy, w, h, angle
-                            coords = c.tolist()
-                            write_ftp_image(p, ".png", patch_im_path)
-                            write_text_file(
-                                " ".join([str(i) for i in coords]), patch_lb_path
-                            )
 
-                            if task_type != DetectionTaskType.SHIP:
-                                if class_id in ObjectCategory:
-                                    cls_name = ObjectCategory[class_id]
-                                else:
-                                    cls_name = str(class_id)
+                        if task_type != DetectionTaskType.SHIP:
+                            if class_id in ObjectCategory:
+                                cls_name = ObjectCategory[class_id]
                             else:
-                                # try:
-                                #     if class_id == 1:
-                                #         cls_name = classify_ship(p)
-                                #     else:
-                                #         cls_name = ObjectCategory[class_id]
-                                # except:
-                                    # extra_mesg += "Classify ship failed!"
-                                cls_name = 'ship'
+                                cls_name = str(class_id)
+                        else:
+                            # try:
+                            #     if class_id == 1:
+                            #         cls_name = classify_ship(p)
+                            #     else:
+                            #         cls_name = ObjectCategory[class_id]
+                            # except:
+                            # extra_mesg += "Classify ship failed!"
+                            cls_name = "ship"
 
-                            detect_obj_id = f"{im_th:03d}-{lb_im_id}"
-                            image_detect_results.append(
-                                ExtractedObject(
-                                    id=detect_obj_id,
-                                    path=patch_im_path,
-                                    coords=coords,
-                                    lb_path=patch_lb_path,
-                                    class_id=cls_name,
-                                ).model_dump()
-                            )
-
-                            box_dect = BoxDetect(
-                                detect_obj_id,
-                                *(output[box_i, :4].tolist()),
-                                *(c[:5].tolist()),
-                                patch_im_path,
-                                patch_lb_path,
-                                cls_name,
-                                float(
-                                    output[box_i, -1],
-                                ),  # type: ignore
-                            )
-                            box_dect.im_path = patch_lb_path
-                            detection_history[im_th][class_id].append(box_dect)
-                    ## ------------------------
+                        detect_obj_id = f"{im_th:03d}-{lb_im_id}"
+                        image_detect_results.append(
+                            ExtractedObject(
+                                id=detect_obj_id,
+                                path=patch_im_path,
+                                coords=coords,
+                                lb_path=patch_lb_path,
+                                class_id=cls_name,
+                            ).model_dump()
+                        )
 
                     detect_results.append(
                         {"image_id": image_id, "detections": image_detect_results}
@@ -564,73 +513,6 @@ async def async_main():
 
                 if not task_infer_image_success:
                     await _update_task("Task inference failed!", 0)
-
-                if task_type in [DetectionTaskType.CHANGE, DetectionTaskType.MILITARY]:
-                    num_images = len(detection_history)
-                    num_cls = len(detection_history[0])
-                    records: List[BoxRecord] = []
-                    for cls_i in range(num_cls):
-                        for im_i in range(num_images - 1):
-                            current_cls_box_dets = detection_history[im_i][cls_i]
-                            for current_box_det in current_cls_box_dets:
-                                if current_box_det.went_by:
-                                    continue
-                                new_record = BoxRecord(
-                                    cate_id=cls_i, steps_num=num_images, start_step=im_i
-                                )
-                                checked = new_record.check_new_target(
-                                    current_box_det, step=im_i, save=True
-                                )
-                                if checked:
-                                    current_box_det.went_by = True
-                                    current_box_det.update()
-                                for next_im_i in range(im_i + 1, num_images):
-                                    next_cls_box_dets = detection_history[next_im_i][
-                                        cls_i
-                                    ]
-                                    for next_box_det in next_cls_box_dets:
-                                        if next_box_det.went_by:
-                                            continue
-                                        next_moved = new_record.check_new_target(
-                                            next_box_det, step=next_im_i, save=True
-                                        )
-                                        if next_moved:
-                                            next_box_det.went_by = True
-                                            next_box_det.update()
-                                new_record.update_longest_sequence()
-                                records.append(new_record)
-
-                    if task_type == DetectionTaskType.CHANGE:
-                        valid_records = []
-                        if input_params.consecutive_thr is not None:
-                            valid_records = [
-                                r
-                                for r in records
-                                if len(r.longest_history) / num_images
-                                > input_params.consecutive_thr
-                            ]
-                        rbboxes = [
-                            bbox.lat_lon_result
-                            for r in valid_records
-                            for bbox in r.longest_sequence
-                        ]
-                        # dict.update(final_output, {"movement": rbboxes})
-                        dict.update(output_dict, {"change": rbboxes})
-                    if task_type == DetectionTaskType.MILITARY:
-
-                        valid_records = [
-                            r for r in records if len(r.first_cluster_elem)
-                        ]
-                        rbboxes = [
-                            bbox.lat_lon_result
-                            for r in valid_records
-                            for bbox in r.first_cluster_elem
-                        ]
-                        # dict.update(final_output, {"military": valid_records})
-                        dict.update(output_dict, {"military": rbboxes})
-
-                    t.task_output = json.dumps(output_dict)
-
                 if task_type == DetectionTaskType.SHIP:
                     # images_ship_results = [
                     #     image_result["detections"] for image_result in detect_results
@@ -680,20 +562,4 @@ async def async_main():
 
 
 if __name__ == "__main__":
-
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument(
-    #     "--task_type",
-    #     type=lambda v: DetectionTaskType[v],
-    #     choices=list(DetectionTaskType),
-    #     required=True,
-    #     help="Task type",
-    # )
-    # args, _ = parser.parse_known_args()
-    # asyncio.run(async_main(args.task_type))
-
     asyncio.run(async_main())
-
-    # pre_param_conf = load_task_config(args.task_type)
-    # worker = Worker()
-    # asyncio.run(worker.start(args.task_type, pre_param_conf))

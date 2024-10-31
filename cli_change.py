@@ -219,7 +219,9 @@ async def async_main():
                 }
             )
 
-        async def _process_image(input_file: str, return_bin: bool = False) -> Tuple[None | np.ndarray, bool]:
+        async def _process_image(
+            input_file: str, return_bin: bool = False
+        ) -> Tuple[None | np.ndarray, bool]:
             # nonlocal bname, save_dir, input_params, task_infer_image_success
             # bname = os.path.basename(input_file).rsplit(".", 1)[0]
             # save_dir = os.path.join(input_params.out_dir, bname)
@@ -255,7 +257,12 @@ async def async_main():
             try:
                 if not current_task:
                     return
-                await update_task_info(current_task, f'{msg}\n{extra_mesg}' if msg else msg, session, task_stat)
+                await update_task_info(
+                    current_task,
+                    f"{msg}\n{extra_mesg}" if msg else msg,
+                    session,
+                    task_stat,
+                )
             except:
                 stop_update_task_continuously()
 
@@ -315,7 +322,6 @@ async def async_main():
                 t.task_param = input_params.model_dump_json(exclude_none=True)
                 await _update_task()
 
-
                 t.task_stat = 1
                 t.task_message = "\n".join(["Successfully", extra_mesg])
                 try:
@@ -341,7 +347,9 @@ async def async_main():
                             continue
                         raster_images.append(RasterImage(bin_im))
 
-                    raster_intersection = RasterImage.find_intersection(raster_images[0], raster_images[1:])
+                    raster_intersection = RasterImage.find_intersection(
+                        raster_images[0], raster_images[1:]
+                    )
                     for raster_image in raster_images:
                         cropped_im, _ = raster_image.crop_raster(raster_intersection)
                         if not _:
@@ -374,34 +382,40 @@ async def async_main():
                 if filter_image_path:
                     try:
                         image_filter = read_ftp_np_image(filter_image_path)
-                        filter_size = np.array( image_filter.shape[:2][::-1])
+                        filter_size = np.array(image_filter.shape[:2][::-1])
                         mask_size = np.array(mask_img.shape[:2][::-1])
                         if not (mask_size == filter_size).all():
                             image_filter = cv2.resize(image_filter, mask_size)
-                            extra_mesg += '. Mask filter has different size'
+                            extra_mesg += ". Mask filter has different size"
                         if len(image_filter.shape) > 2:
-                            image_filter = cv2.cvtColor(image_filter, cv2.COLOR_BGR2GRAY)
+                            image_filter = cv2.cvtColor(
+                                image_filter, cv2.COLOR_BGR2GRAY
+                            )
 
                         image_filter = image_filter != 0
                         mask_img = mask_img * image_filter
                     except Exception as e:
-                        extra_mesg += f'. Reading mask filter failed at {filter_image_path}'
+                        extra_mesg += (
+                            f". Reading mask filter failed at {filter_image_path}"
+                        )
                         pass
 
                 intersection_np = raster_intersection.numpy
                 sized_mask_img = cv2.resize(mask_img, intersection_np.shape[:2][::-1])
-                sized_mask_img = cv2.normalize(sized_mask_img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                sized_mask_img = cv2.normalize(
+                    sized_mask_img, None, 0, 255, cv2.NORM_MINMAX
+                ).astype(np.uint8)
                 keypoint_list = find_boundary_keypoints(sized_mask_img)
-                lat_lon_keypoints = [[raster_intersection.pixel_to_coords(x, y) for x, y in kp] for kp in keypoint_list]
+                lat_lon_keypoints = [
+                    [raster_intersection.pixel_to_coords(x, y) for x, y in kp]
+                    for kp in keypoint_list
+                ]
                 bname = os.path.basename(image_files[0]).rsplit(".", 1)[0]
-                file_path = os.path.join(input_params.out_dir, bname) + '_changes.png'
-                write_ftp_image(sized_mask_img, '.png', file_path)
-
-                output_dict = dict({
-                    "output_file": file_path,
-                    "output": lat_lon_keypoints
-                })
-                
+                file_path = os.path.join(input_params.out_dir, bname) + "_changes.png"
+                write_ftp_image(sized_mask_img, ".png", file_path)
+                output_dict = dict(
+                    {"output_file": file_path, "output": lat_lon_keypoints}
+                )
                 t.task_output = json.dumps(output_dict)
                 logger.info(f"Process task id = {t.id} successfully")
                 stop_update_task_continuously()

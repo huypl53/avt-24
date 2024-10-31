@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import json
 import multiprocessing
@@ -34,9 +33,7 @@ from app.service.binio import (
     write_ftp_image,
     write_text_file,
 )
-from core import Worker
 from core.box_record import BoxDetect, BoxRecord
-from core.ship.adsb import check_adsb
 from core.ship.classifier import classify_ship
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
@@ -385,16 +382,15 @@ async def async_main():
                         msg = "Waiting for task id = {}".format(t.task_id_ref)
                         await _update_task(msg)
                         continue
-                    pass
                 msg = "Task is being processed"
                 t.process_id = os.getpid()
                 await _update_task(msg)
 
                 input_param_dict = parse_param_dict(t.task_param)
-                if 'image_type' not in input_param_dict:
+                if "image_type" not in input_param_dict:
                     await _update_task("<image_type> field is requried!", 0)
                     continue
-                if input_param_dict['image_type'] != 'EO':
+                if input_param_dict["image_type"] != "EO":
                     continue
                 if "input_file" not in input_param_dict:
                     await _update_task("<input_file> field is requried!", 0)
@@ -682,20 +678,4 @@ async def async_main():
 
 
 if __name__ == "__main__":
-
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument(
-    #     "--task_type",
-    #     type=lambda v: DetectionTaskType[v],
-    #     choices=list(DetectionTaskType),
-    #     required=True,
-    #     help="Task type",
-    # )
-    # args, _ = parser.parse_known_args()
-    # asyncio.run(async_main(args.task_type))
-
     asyncio.run(async_main())
-
-    # pre_param_conf = load_task_config(args.task_type)
-    # worker = Worker()
-    # asyncio.run(worker.start(args.task_type, pre_param_conf))
