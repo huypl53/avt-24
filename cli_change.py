@@ -26,7 +26,8 @@ from app.schema import (
 from app.service.binio import (
     read_ftp_bin_image,
     read_ftp_np_image,
-    write_ftp_image,
+    write_ftp_bin_image,
+    write_ftp_np_image,
 )
 from log import logger
 from utils.cfar import CFAR2D, CFARParams
@@ -375,8 +376,7 @@ async def async_main():
                 mask_img = np.zeros_like(fft_diff)
 
                 for row, col, value in top_detections:
-                    # TODO: binary mask
-                    mask_img[row, col] = 255
+                    mask_img[row, col] = value
 
                 filter_image_path = input_params.mask_file
                 if filter_image_path:
@@ -401,18 +401,27 @@ async def async_main():
                         pass
 
                 intersection_np = raster_intersection.numpy
+
                 sized_mask_img = cv2.resize(mask_img, intersection_np.shape[:2][::-1])
                 sized_mask_img = cv2.normalize(
                     sized_mask_img, None, 0, 255, cv2.NORM_MINMAX
                 ).astype(np.uint8)
-                keypoint_list = find_boundary_keypoints(sized_mask_img)
+                boundary_mask_img = np.where(sized_mask_img > 0, 255, 0).astype(
+                    np.uint8
+                )
+                keypoint_list = find_boundary_keypoints(boundary_mask_img)
                 lat_lon_keypoints = [
                     [raster_intersection.pixel_to_coords(x, y) for x, y in kp]
                     for kp in keypoint_list
                 ]
+
+                thermal_mask_image = cv2.applyColorMap(sized_mask_img, cv2.COLORMAP_JET)
+                raster_intersection.replace_image_data(thermal_mask_image)
+
                 bname = os.path.basename(image_files[0]).rsplit(".", 1)[0]
-                file_path = os.path.join(input_params.out_dir, bname) + "_changes.png"
-                write_ftp_image(sized_mask_img, ".png", file_path)
+                file_path = os.path.join(input_params.out_dir, bname) + "_changes.tif"
+                # write_ftp_np_image(sized_mask_img, ".png", file_path)
+                write_ftp_bin_image(raster_intersection.to_bytes(), file_path)
                 output_dict = dict(
                     {"output_file": file_path, "output": lat_lon_keypoints}
                 )

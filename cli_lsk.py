@@ -30,7 +30,7 @@ from app.schema import (
 from app.service.binio import (
     ftpTransfer,
     read_ftp_bin_image,
-    write_ftp_image,
+    write_ftp_np_image,
     write_text_file,
 )
 from core.box_record import BoxDetect, BoxRecord
@@ -501,7 +501,7 @@ async def async_main():
                             patch_im_path = path + ".png"
                             # Box cx, cy, w, h, angle
                             coords = c.tolist()
-                            write_ftp_image(p, ".png", patch_im_path)
+                            write_ftp_np_image(p, ".png", patch_im_path)
                             write_text_file(
                                 " ".join([str(i) for i in coords]), patch_lb_path
                             )
