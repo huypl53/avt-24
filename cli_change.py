@@ -411,7 +411,7 @@ async def async_main():
                 )
                 keypoint_list = find_boundary_keypoints(boundary_mask_img)
                 lat_lon_keypoints = [
-                    [raster_intersection.pixel_to_coords(x, y) for x, y in kp]
+                    [raster_intersection.pixel_to_coords(x, y)[::-1] for x, y in kp]
                     for kp in keypoint_list
                 ]
 
