@@ -208,10 +208,14 @@ class RasterImage:
 
         self._numpy_data = cv2_image
         profile = self._dataset.profile.copy()
+
+        num_channels = cv2_image.shape[2]
         profile.update(
             {
                 "height": cv2_image.shape[0],
                 "width": cv2_image.shape[1],
+                "count": num_channels,
+                "dtype": self._numpy_data.dtype,
             }
         )
 
@@ -235,7 +239,7 @@ class RasterImage:
         # Write the dataset to a MemoryFile and return as bytes
         with MemoryFile() as memfile:
             with memfile.open(**self._dataset.profile) as dst:
-                dst.write(self._numpy_data)
+                dst.write(self._numpy_data.transpose(2, 0, 1))
             return memfile.read()
 
 

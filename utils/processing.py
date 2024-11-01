@@ -20,7 +20,7 @@ def find_boundary_keypoints(binary_image, replicate=True) -> List[np.ndarray]:
             if cv2.contourArea(contour) < 0:
                 contour = contour[::-1]
             if replicate:
-                contour = [*contour, contour[0]]
+                contour = np.array([*contour, contour[0]])
             ordered_keypoints.append(contour.squeeze())
 
     return ordered_keypoints

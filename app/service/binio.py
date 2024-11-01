@@ -48,7 +48,7 @@ def write_ftp_np_image(image: np.ndarray, extension: str, file_path: str):
 
 
 def write_ftp_bin_image(image: bytes, file_path: str):
-    ftpTransfer.upload_file(file_path, image)
+    ftpTransfer.upload_file(file_path, io.BytesIO(image))
 
 
 def write_text_file(text: str, file_path: str):
