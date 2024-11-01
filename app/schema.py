@@ -63,6 +63,7 @@ class ImageType(Enum):
     EO = "EO"
     SAR = "SAR"
 
+
 class DetectionParam(IOParam):
     algorithm: str
     config: str
@@ -86,24 +87,40 @@ class DetectionParam(IOParam):
 class DetectionInputParam(DetectionParam):
     pass
 
+    # 0: "plane",
+    # 1: "ship",
+    # 2: "storage_tank",
+    # 3: "baseball_diamond",
+    # 4: "tennis_court",
+    # 5: "basketball_court",
+    # 6: "ground_track_field",
+    # 7: "harbor",
+    # 8: "bridge",
+    # 9: "large_vehicle",
+    # 10: "small_vehicle",
+    # 11: "helicopter",
+    # 12: "roundabout",
+    # 13: "soccer_ball_field",
+    # 14: "swimming_pool",
+
 
 ObjectCategory = dict(
     {
-        0: "plane",
-        1: "ship",
-        2: "storage_tank",
-        3: "baseball_diamond",
-        4: "tennis_court",
-        5: "basketball_court",
-        6: "ground_track_field",
-        7: "harbor",
-        8: "bridge",
-        9: "large_vehicle",
-        10: "small_vehicle",
-        11: "helicopter",
-        12: "roundabout",
-        13: "soccer_ball_field",
-        14: "swimming_pool",
+        0: "may_bay",
+        1: "tau_thuyen",
+        2: "be_chua",
+        3: "san_bong_chay",
+        4: "san_quan_vot",
+        5: "san_bong_ro",
+        6: "duong_chay",
+        7: "cang_bien",
+        8: "cau",
+        9: "phuong_tien_lon",
+        10: "phuong_tien_nho",
+        11: "truc_thang",
+        12: "vong_xoay",
+        13: "san_bong_da",
+        14: "be_boi",
     }
 )
 # SHIP = 0
