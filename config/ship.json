@@ -10,5 +10,4 @@
   "merge_iou_thr": 0.1,
   "input_file": [""],
   "image_type": "EO"
-
 }

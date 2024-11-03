@@ -530,9 +530,9 @@ async def async_main():
                 lat_lon_runway_lines = pixel_point_to_lat_long(
                     flat_runway_lines, tif_meta
                 )
-                lat_lon_runway_lines = np.array(lat_lon_runway_lines).reshape(-1, 4)[
-                    ..., ::-1
-                ]
+                lat_lon_runway_lines = (
+                    np.array(lat_lon_runway_lines).reshape(-1, 4)[..., ::-1].tolist()
+                )
                 output_dict = dict(
                     {
                         "detections": [
@@ -545,8 +545,7 @@ async def async_main():
 
                 if not task_infer_image_success:
                     await _update_task("Task inference failed!", 0)
-                if task_type == DetectionTaskType.SHIP:
-                    t.task_output = json.dumps(output_dict["detections"])
+                t.task_output = json.dumps(output_dict)
                 t.task_stat = 1
                 t.task_message = "\n".join(["Successfully", extra_mesg])
                 if os.path.isfile(tmp_im_path):
