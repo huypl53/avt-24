@@ -10,6 +10,7 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
+from core.line import detect_runway
 import torch
 from dictdiffer import diff
 from mmdet.apis import init_detector
@@ -164,15 +165,9 @@ def load_task_config(task_type: DetectionTaskType) -> DetectionParam | None:
 
 def clear_model(model):
     del model
-    # import gc
-    # gc.collect()
-    # torch.cuda.empty_cache()
 
 
-# async def async_main(task_type: DetectionTaskType):
 async def async_main():
-    # assert len(sys.argv) < 2
-    # task_id = int(sys.argv[1])
 
     model = None
     current_task = None
@@ -183,9 +178,9 @@ async def async_main():
     save_dir: str = ""
 
     avail_task_types = [
-        DetectionTaskType.SHIP,
+        # DetectionTaskType.SHIP,
         # DetectionTaskType.CHANGE,
-        # DetectionTaskType.MILITARY,
+        DetectionTaskType.MILITARY,
     ]
     _num_task_types = len(avail_task_types)
     _i = 0
@@ -361,7 +356,7 @@ async def async_main():
         )
         tasks = await query_tasks_by_stmt(stmt_task, session)
 
-        print("Detect ship")
+        print("Detect military objects")
         try:
             for task_i, t in enumerate(tasks):
                 current_task = t
@@ -386,11 +381,6 @@ async def async_main():
                 await _update_task(msg)
 
                 input_param_dict = parse_param_dict(t.task_param)
-                if "image_type" not in input_param_dict:
-                    await _update_task("<image_type> field is requried!", 0)
-                    continue
-                if input_param_dict["image_type"] != "EO":
-                    continue
                 if "input_file" not in input_param_dict:
                     await _update_task("<input_file> field is requried!", 0)
                     continue
@@ -402,9 +392,6 @@ async def async_main():
                 t.task_param = input_params.model_dump_json(exclude_none=True)
                 await _update_task()
                 detect_results = []
-                detection_history: List[List[List[BoxDetect]]] = [
-                    [] for _ in range(len(input_params.input_file))
-                ]
                 for im_th, image_path in enumerate(input_params.input_file):
                     image_id = image_path
                     _, success = await _process_image(image_path)
@@ -421,7 +408,6 @@ async def async_main():
                     # classes_results = np.array(classes_results)
                     image_detect_results: List[Dict] = []
                     for class_id, class_rbboxes in enumerate(classes_results):
-                        detection_history[im_th].append([])
                         # output = result[:, result[..., -1] > input_params.score_thr]
                         output = np.array(class_rbboxes)
                         output = output[output[..., -1] > input_params.score_thr]
@@ -513,10 +499,7 @@ async def async_main():
                                     cls_name = str(class_id)
                             else:
                                 try:
-                                    if class_id == 1:
-                                        cls_name = classify_ship(p)
-                                    else:
-                                        cls_name = ObjectCategory[class_id]
+                                    cls_name = ObjectCategory[class_id]
                                 except:
                                     extra_mesg += "Classify ship failed!"
                                     cls_name = str(DetectionTaskType.SHIP.value)
@@ -532,106 +515,37 @@ async def async_main():
                                 ).model_dump()
                             )
 
-                            box_dect = BoxDetect(
-                                detect_obj_id,
-                                *(output[box_i, :4].tolist()),
-                                *(c[:5].tolist()),
-                                patch_im_path,
-                                patch_lb_path,
-                                cls_name,
-                                float(
-                                    output[box_i, -1],
-                                ),  # type: ignore
-                            )
-                            box_dect.im_path = patch_lb_path
-                            detection_history[im_th][class_id].append(box_dect)
-                    ## ------------------------
-
                     detect_results.append(
                         {"image_id": image_id, "detections": image_detect_results}
                     )
+
+                # Detect runway lines
+                with open(r"./config/runway.json", "r") as f:
+                    line_params = json.load(f)
+                runway_lines = detect_runway(im, line_params)
+
+                flat_runway_lines = np.array(runway_lines).reshape(-1, 4)
+                flat_runway_lines = flat_runway_lines.reshape(-1, 2)
+
+                lat_lon_runway_lines = pixel_point_to_lat_long(
+                    flat_runway_lines, tif_meta
+                )
+                lat_lon_runway_lines = np.array(lat_lon_runway_lines).reshape(-1, 4)[
+                    ..., ::-1
+                ]
                 output_dict = dict(
                     {
                         "detections": [
                             image_result["detections"]
                             for image_result in detect_results
-                        ]
+                        ],
+                        "runways": lat_lon_runway_lines,
                     }
                 )
 
                 if not task_infer_image_success:
                     await _update_task("Task inference failed!", 0)
-
-                if task_type in [DetectionTaskType.CHANGE, DetectionTaskType.MILITARY]:
-                    num_images = len(detection_history)
-                    num_cls = len(detection_history[0])
-                    records: List[BoxRecord] = []
-                    for cls_i in range(num_cls):
-                        for im_i in range(num_images - 1):
-                            current_cls_box_dets = detection_history[im_i][cls_i]
-                            for current_box_det in current_cls_box_dets:
-                                if current_box_det.went_by:
-                                    continue
-                                new_record = BoxRecord(
-                                    cate_id=cls_i, steps_num=num_images, start_step=im_i
-                                )
-                                checked = new_record.check_new_target(
-                                    current_box_det, step=im_i, save=True
-                                )
-                                if checked:
-                                    current_box_det.went_by = True
-                                    current_box_det.update()
-                                for next_im_i in range(im_i + 1, num_images):
-                                    next_cls_box_dets = detection_history[next_im_i][
-                                        cls_i
-                                    ]
-                                    for next_box_det in next_cls_box_dets:
-                                        if next_box_det.went_by:
-                                            continue
-                                        next_moved = new_record.check_new_target(
-                                            next_box_det, step=next_im_i, save=True
-                                        )
-                                        if next_moved:
-                                            next_box_det.went_by = True
-                                            next_box_det.update()
-                                new_record.update_longest_sequence()
-                                records.append(new_record)
-
-                    if task_type == DetectionTaskType.CHANGE:
-                        valid_records = []
-                        if input_params.consecutive_thr is not None:
-                            valid_records = [
-                                r
-                                for r in records
-                                if len(r.longest_history) / num_images
-                                > input_params.consecutive_thr
-                            ]
-                        rbboxes = [
-                            bbox.lat_lon_result
-                            for r in valid_records
-                            for bbox in r.longest_sequence
-                        ]
-                        # dict.update(final_output, {"movement": rbboxes})
-                        dict.update(output_dict, {"change": rbboxes})
-                    if task_type == DetectionTaskType.MILITARY:
-
-                        valid_records = [
-                            r for r in records if len(r.first_cluster_elem)
-                        ]
-                        rbboxes = [
-                            bbox.lat_lon_result
-                            for r in valid_records
-                            for bbox in r.first_cluster_elem
-                        ]
-                        # dict.update(final_output, {"military": valid_records})
-                        dict.update(output_dict, {"military": rbboxes})
-
-                    t.task_output = json.dumps(output_dict)
-
                 if task_type == DetectionTaskType.SHIP:
-                    # images_ship_results = [
-                    #     image_result["detections"] for image_result in detect_results
-                    # ]
                     t.task_output = json.dumps(output_dict["detections"])
                 t.task_stat = 1
                 t.task_message = "\n".join(["Successfully", extra_mesg])

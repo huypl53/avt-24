@@ -1,7 +1,7 @@
 {
   "algorithm": "phat_hien_doi_tuong_quan_su",
-  "config": "./LSKNet/configs/roi_trans/roi_trans_swin_tiny_fpn_1x_dota_le90.py",
-  "checkpoint": "./roi_trans_swin_tiny_fpn_1x_dota_le90-ddeee9ae.pth",
+  "config": "/workspace/avt-detection/LSKNet/configs/s2anet/s2anet_r50_fpn_fp16_1x_dota_le135.py",
+  "checkpoint": "/workspace/avt-detection/s2anet_r50_fpn_fp16_1x_dota_le135-5cac515c.pth",
   "device": "cuda:0",
   "score_thr": 0.3,
   "patch_sizes": [1024],
@@ -11,5 +11,6 @@
   "consecutive_thr": 0.2,
   "translation_threshold": 3,
   "rotation_threshold": 3,
-  "iou": 0.12
+  "iou": 0.12,
+  "input_file": [""]
 }

@@ -75,7 +75,7 @@ class DetectionParam(IOParam):
     patch_steps: List[int]
     img_ratios: List[float]
     merge_iou_thr: float
-    image_type: str
+    image_type: Optional[str] = None
 
     # DetectionTaskType.change
     consecutive_thr: Optional[float] = None  #
@@ -108,17 +108,17 @@ ObjectCategory = dict(
     {
         0: "may_bay",
         1: "tau_thuyen",
-        2: "be_chua",
-        3: "san_bong_chay",
-        4: "san_quan_vot",
-        5: "san_bong_ro",
+        2: "radar",
+        3: "san_bong",
+        4: "san_bong",
+        5: "san_bong",
         6: "duong_chay",
         7: "cang_bien",
-        8: "cau",
-        9: "phuong_tien_lon",
-        10: "phuong_tien_nho",
+        8: "cau_duong_bo",
+        9: "phuong_tien_van_tai",
+        10: "phuong_tien_van_tai",
         11: "truc_thang",
-        12: "vong_xoay",
+        12: "bung_binh",
         13: "san_bong_da",
         14: "be_boi",
     }
