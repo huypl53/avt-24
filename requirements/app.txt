@@ -9,3 +9,4 @@ asyncpg==0.29.0
 requests==2.32.3
 pillow==11.0.0
 pyproj==3.7.0
+rasterio==1.4.1

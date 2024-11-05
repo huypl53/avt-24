@@ -166,3 +166,5 @@ cython_debug/
 LSKNet/
 demo_box_record.json
 core/demo_box_record.json
+
+sample/
