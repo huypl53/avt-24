@@ -1,9 +1,16 @@
+from enum import Enum
 import numpy as np
 import rasterio
 import cv2
 import json
+import os
 
-from tools.type import ObjectClass
+
+class ObjectClass(Enum):
+    RUNWAY = 1
+    AIRPORT = 2
+    SHIP = 3
+    RADOME = 4
 
 
 def validate_polygon(points, bbox):
@@ -78,19 +85,20 @@ def parse_json_annotation(json_path):
         data = json.load(f)
 
     annotations = []
-    for obj in data:
-        # Extract class name from filename before first underscore
-        filename = obj.get("filename", "")
-        class_name = filename.split("_")[0].upper()
+    obj = data
+    # for obj in data:
+    # Extract class name from filename before first underscore
+    filename = os.path.basename(json_path)
+    class_name = filename.split("_")[0].upper()
 
-        # Get coordinates and bbox
-        coords = obj["coords"]
-        bbox = obj["bbox"]
+    # Get coordinates and bbox
+    coords = obj["coords"]
+    bbox = obj["bbox"]
 
-        # Convert coordinates to points array [[lon1, lat1], [lon2, lat2], ...]
-        points = np.array([[coords[i], coords[i + 1]] for i in range(0, 8, 2)])
+    # Convert coordinates to points array [[lon1, lat1], [lon2, lat2], ...]
+    points = np.array([[coords[i], coords[i + 1]] for i in range(0, 8, 2)])
 
-        annotations.append((class_name, points, bbox))
+    annotations.append((class_name, points, bbox))
 
     return annotations
 
@@ -144,11 +152,11 @@ def save_mask(mask, output_path, tif_path):
             dst.write(mask, 1)
 
 
-# Example usage
-if __name__ == "__main__":
-    tif_path = "path/to/your/satellite_image.tif"
-    json_path = "path/to/your/annotations.json"
-    output_path = "path/to/output/mask.tif"
+def main():
+    bname = "RUNWAY_2024-11-06_13-37-08-596_1_3m"
+    tif_path = f"sample/runway/{bname}.tif"
+    json_path = f"sample/runway/{bname}.json"
+    output_path = f"sample/runway/{bname}.png"
 
     # Parse JSON annotations
     annotations = parse_json_annotation(json_path)
@@ -156,3 +164,9 @@ if __name__ == "__main__":
     # Generate and save mask
     mask = generate_mask(tif_path, annotations)
     save_mask(mask, output_path, tif_path)
+
+
+# Example usage
+if __name__ == "__main__":
+
+    main()
