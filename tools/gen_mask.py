@@ -111,12 +111,15 @@ def generate_mask(tif_path, annotations):
         width = src.width
         mask = np.zeros((height, width), dtype=np.uint8)
 
+        success = False
         for class_name, points, bbox in annotations:
             # Validate polygon
             is_valid, error_msg = validate_polygon(points, bbox)
             if not is_valid:
-                print(f"Warning: Invalid polygon in {class_name}: {error_msg}")
-                continue
+                print(
+                    f"Warning: Invalid polygon in {class_name}: {error_msg}, file: {tif_path}"
+                )
+                # continue
 
             # Reorder points to ensure proper polygon
             points = reorder_coordinates(points)
@@ -138,8 +141,9 @@ def generate_mask(tif_path, annotations):
 
             # Draw filled polygon
             cv2.fillPoly(mask, [pixel_points], class_value)
+            success = True
 
-    return mask
+    return mask, success
 
 
 def save_mask(mask, output_path, tif_path):
@@ -168,5 +172,27 @@ def main():
 
 # Example usage
 if __name__ == "__main__":
+    # main()
+    in_dir = "sample/runway"
+    from pathlib import Path
+    from tqdm import tqdm
 
-    main()
+    json_files = Path(in_dir).glob("*.json")
+
+    missing_files = []
+    for json_path in tqdm(json_files, leave=False, desc="Processing JSON files"):
+        # Check if corresponding TIF exists
+        tif_path = json_path.with_suffix(".tif")
+        if not tif_path.exists():
+
+            missing_files.append(str(tif_path))
+            continue
+
+        # Parse JSON annotations
+        annotations = parse_json_annotation(json_path)
+
+        # Generate and save mask
+        mask, success = generate_mask(tif_path, annotations)
+        if not success:
+            continue
+        save_mask(mask, json_path.with_suffix(".png"), tif_path)

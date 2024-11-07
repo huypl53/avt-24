@@ -5,6 +5,8 @@ import numpy as np
 from PIL import Image
 import io
 
+image_service_url = "https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export"
+
 
 def download_arcgis(bbox, output_path, token=None):
     """
@@ -17,7 +19,6 @@ def download_arcgis(bbox, output_path, token=None):
     """
 
     # ArcGIS World Imagery service URL
-    image_service_url = "https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export"
 
     # Calculate dimensions to maintain reasonable resolution
     # ArcGIS typically limits image size, so we'll use 2000 pixels as max dimension
@@ -48,7 +49,6 @@ def download_arcgis(bbox, output_path, token=None):
 
     try:
         # Download image
-        print("Downloading image from ArcGIS Online...")
         response = requests.get(image_service_url, params=params)
         response.raise_for_status()
 
