@@ -520,8 +520,8 @@ def crawl(sample_num=5):
     buffer_max = 3000  # Maximum buffer around runway in meters
 
     resolutions = [1, 3]  # meter per pixel
-    # download_missing_tifs(output_dir)
-    # return
+    download_missing_tifs(output_dir)
+    return
     for resolution in tqdm(resolutions, leave=False, desc="Resolution"):
         try:
             download_runway_images(
