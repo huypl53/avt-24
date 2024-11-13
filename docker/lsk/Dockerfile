@@ -44,7 +44,6 @@ RUN <<EOF
     rm -rf mmdetection
     git clone -bv3.3.0 https://github.com/open-mmlab/mmdetection.git
     cd mmdetection
-
     pip install -e .
 EOF
 
@@ -75,4 +74,11 @@ RUN <<EOF
     cd ./LSKNet && pip install -v -e .
     pip cache purge
     conda clean --all -y
+    
+    cd /workspace/
+    git clone -bv0.30.0 https://github.com/open-mmlab/mmsegmentation.git 
+    cd mmsegmentation
+    pip install ftfy==6.3.1 regex==2024.11.6 yapf==0.40.1
+    pip install -e .
+
 EOF

@@ -4,6 +4,19 @@ from typing import BinaryIO
 from app.db.setting import settings
 from log import logger
 
+NUM_TRIES = 5
+
+
+def repeat_try(func):
+    def wrapper(*args, **kwargs):
+        for i in range(NUM_TRIES):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"FTP operation failed after {i} tries. Error: {e}")
+
+    return wrapper
+
 
 class _FtpConnector:
     def __init__(self) -> None:
@@ -32,6 +45,7 @@ class _FtpConnector:
         self.ftp_server.cwd(settings.FTP_WORK_DIR)
         logger.info(f"cwd to {settings.FTP_WORK_DIR}")
 
+    @repeat_try
     def upload_file(self, file_path: str, file: BinaryIO) -> bool:
         try:
             self.ftp_server.storbinary(f"STOR {file_path}", file)
@@ -43,6 +57,7 @@ class _FtpConnector:
             self._try_connect()
             return False
 
+    @repeat_try
     def download_file(self, file_path: str, file: BinaryIO) -> bool:
         try:
             self.ftp_server.retrbinary(f"RETR {file_path}", file.write)
@@ -53,6 +68,7 @@ class _FtpConnector:
             self._try_connect()
             return False
 
+    @repeat_try
     def mkdir(self, dir_path: str) -> bool:
         try:
             if self.ftp_server.mkd(dir_path):
@@ -66,6 +82,7 @@ class _FtpConnector:
             self._try_connect()
             return False
 
+    @repeat_try
     def cwd(self, path: str) -> bool:
         current_dir = self.ftp_server.pwd()
         try:
@@ -79,6 +96,7 @@ class _FtpConnector:
             self._try_connect()
             return False
 
+    @repeat_try
     def is_dir_existed(self, path: str) -> bool:
         current_dir = self.ftp_server.pwd()
         try:

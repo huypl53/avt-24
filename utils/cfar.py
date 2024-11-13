@@ -1,17 +1,20 @@
 import numpy as np
 from typing import Tuple, List
 from dataclasses import dataclass
+from typing import List, Optional, Union
+
+from pydantic import BaseModel
 
 
-@dataclass
-class CFARParams:
+# @dataclass
+class CFARParams(BaseModel):
     """Parameters for CFAR detection"""
 
-    guard_cells: Tuple[int, int]  # Number of guard cells (rows, cols)
-    training_cells: Tuple[int, int]  # Number of training cells (rows, cols)
-    false_alarm_rate: float  # Desired false alarm rate
-    scaling_factor: float = 1.5  # Direct scaling factor for threshold
-    min_training_cells: int = 1  # Minimum number of training cells required
+    guard_cells: Optional[Tuple[int, int]]  # Number of guard cells (rows, cols)
+    training_cells: Optional[Tuple[int, int]]  # Number of training cells (rows, cols)
+    false_alarm_rate: Optional[float]  # Desired false alarm rate
+    scaling_factor: Optional[float] = 1.5  # Direct scaling factor for threshold
+    min_training_cells: Optional[int] = 1  # Minimum number of training cells required
 
 
 class CFAR2D:
