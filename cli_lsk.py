@@ -40,7 +40,11 @@ from core.box_record import BoxDetect, BoxRecord
 from core.ship.classifier import classify_ship
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
-from utils.processing import find_boundary_keypoints
+from utils.processing import (
+    find_boundary_keypoints,
+    get_rotated_bbox_corners,
+    mask2rbboxes,
+)
 from utils.raster import (
     angle_to_bearings,
     latlong2meter,
@@ -557,21 +561,6 @@ async def async_main():
                                 ).model_dump()
                             )
 
-                            box_dect = BoxDetect(
-                                detect_obj_id,
-                                *(output[box_i, :4].tolist()),
-                                *(c[:5].tolist()),
-                                patch_im_path,
-                                patch_lb_path,
-                                cls_name,
-                                float(
-                                    output[box_i, -1],
-                                ),  # type: ignore
-                            )
-                            box_dect.im_path = patch_lb_path
-                            detection_history[im_th][class_id].append(box_dect)
-                    ## ------------------------
-
                     detect_results.append(
                         {"image_id": image_id, "detections": image_detect_results}
                     )
@@ -586,101 +575,77 @@ async def async_main():
                     boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(
                         np.uint8
                     )
-                    keypoint_list = find_boundary_keypoints(boundary_mask_img)
+                    # keypoint_list = find_boundary_keypoints(boundary_mask_img)
 
+                    runway_rbboxes = mask2rbboxes(boundary_mask_img)
+                    runway_xyxyxyxy = [
+                        get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
+                    ]
+
+                    runway_lat_lon_wh = np.array(
+                        [
+                            [
+                                latlong2meter(
+                                    row[i],
+                                    row[i + 1],
+                                    row[i + 2],
+                                    row[i + 3],
+                                )
+                                for i in range(0, 3, 2)
+                            ]
+                            for row in runway_xyxyxyxy
+                        ]
+                    )
                     raster_image = RasterImage(tmp_im_path)
                     raster_image.replace_image_data(im)
-                    lat_lon_keypoints = [
-                        [raster_image.pixel_to_coords(x, y)[::-1] for x, y in kp]
-                        for kp in keypoint_list
+
+                    runway_center_lat_lon = [
+                        raster_image.pixel_to_coords(rbbox[0], rbbox[1])
+                        for rbbox in runway_rbboxes
                     ]
+                    runway_coords = np.array(
+                        [
+                            [center[0], center[1], wh[0], wh[1], rbbox[-1]]
+                            for center, wh, rbbox in zip(
+                                runway_center_lat_lon, runway_lat_lon_wh, runway_rbboxes
+                            )
+                        ]
+                    )
                     seg_runway_results.append(
                         {
                             "image_id": image_id,
-                            "runway": lat_lon_keypoints,
+                            "runway": [
+                                ExtractedObject(
+                                    id=detect_obj_id,
+                                    coords=coords,
+                                    class_id="duong_bay",
+                                ).model_dump()
+                                for coords in runway_coords
+                            ],
                         }
                     )
-                output_dict = dict(
-                    {
-                        "detections": [
-                            image_result["detections"]
-                            for image_result in detect_results
-                        ],
-                        "runway": [
-                            image_result["runway"]
-                            for image_result in seg_runway_results
-                        ],
-                    }
-                )
 
+                # output_dict = dict(
+                #     {
+                #         "detections": [
+                #             image_result["detections"]
+                #             for image_result in detect_results
+                #         ],
+                #         "runway": [
+                #             image_result["runway"]
+                #             for image_result in seg_runway_results
+                #         ],
+                #     }
+                # )
+
+                output_dict = [
+                    image_result["detections"] for image_result in detect_results
+                ]
+                output_dict += [
+                    image_result["runway"] for image_result in seg_runway_results
+                ]
                 if not task_infer_image_success:
                     await _update_task("Task inference failed!", 0)
-
-                if task_type in [DetectionTaskType.CHANGE, DetectionTaskType.MILITARY]:
-                    num_images = len(detection_history)
-                    num_cls = len(detection_history[0])
-                    records: List[BoxRecord] = []
-                    for cls_i in range(num_cls):
-                        for im_i in range(num_images - 1):
-                            current_cls_box_dets = detection_history[im_i][cls_i]
-                            for current_box_det in current_cls_box_dets:
-                                if current_box_det.went_by:
-                                    continue
-                                new_record = BoxRecord(
-                                    cate_id=cls_i, steps_num=num_images, start_step=im_i
-                                )
-                                checked = new_record.check_new_target(
-                                    current_box_det, step=im_i, save=True
-                                )
-                                if checked:
-                                    current_box_det.went_by = True
-                                    current_box_det.update()
-                                for next_im_i in range(im_i + 1, num_images):
-                                    next_cls_box_dets = detection_history[next_im_i][
-                                        cls_i
-                                    ]
-                                    for next_box_det in next_cls_box_dets:
-                                        if next_box_det.went_by:
-                                            continue
-                                        next_moved = new_record.check_new_target(
-                                            next_box_det, step=next_im_i, save=True
-                                        )
-                                        if next_moved:
-                                            next_box_det.went_by = True
-                                            next_box_det.update()
-                                new_record.update_longest_sequence()
-                                records.append(new_record)
-
-                    if task_type == DetectionTaskType.CHANGE:
-                        valid_records = []
-                        if input_params.consecutive_thr is not None:
-                            valid_records = [
-                                r
-                                for r in records
-                                if len(r.longest_history) / num_images
-                                > input_params.consecutive_thr
-                            ]
-                        rbboxes = [
-                            bbox.lat_lon_result
-                            for r in valid_records
-                            for bbox in r.longest_sequence
-                        ]
-                        # dict.update(final_output, {"movement": rbboxes})
-                        dict.update(output_dict, {"change": rbboxes})
-                    if task_type == DetectionTaskType.MILITARY:
-
-                        valid_records = [
-                            r for r in records if len(r.first_cluster_elem)
-                        ]
-                        rbboxes = [
-                            bbox.lat_lon_result
-                            for r in valid_records
-                            for bbox in r.first_cluster_elem
-                        ]
-                        # dict.update(final_output, {"military": valid_records})
-                        dict.update(output_dict, {"military": rbboxes})
-
-                    t.task_output = json.dumps(output_dict)
 
                 if task_type == DetectionTaskType.SHIP:
                     # images_ship_results = [

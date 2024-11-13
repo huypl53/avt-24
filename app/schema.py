@@ -136,7 +136,7 @@ ObjectCategory = dict(
 
 class ExtractedObject(BaseModel):
     id: str
-    path: str
+    path: Optional[str] = None
     coords: List[float]
     lb_path: Optional[str] = None
     class_id: Optional[str] = None

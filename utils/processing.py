@@ -24,3 +24,95 @@ def find_boundary_keypoints(binary_image, replicate=True) -> List[np.ndarray]:
             ordered_keypoints.append(contour.squeeze())
 
     return ordered_keypoints
+
+
+def get_rotated_bbox_corners(bbox):
+    """
+    Get the coordinates of the four corners of a rotated bounding box.
+
+    Parameters:
+    bbox (tuple): Rotated bounding box in the format ((x, y), (width, height), angle).
+
+    Returns:
+    tuple: Coordinates of the four corners of the rotated bounding box in the format (x1, y1, x2, y2, x3, y3, x4, y4).
+    """
+    (x, y), (width, height), angle = bbox
+
+    # Calculate the four corners of the rotated bounding box
+    center = np.array([x, y])
+    vertices = np.array(
+        [
+            [-width / 2, -height / 2],
+            [-width / 2, height / 2],
+            [width / 2, height / 2],
+            [width / 2, -height / 2],
+        ]
+    )
+
+    # Rotate the vertices based on the angle
+    R = cv2.getRotationMatrix2D((0, 0), angle, 1)
+    rotated_vertices = (R @ vertices.T).T
+
+    # Translate the rotated vertices to the actual center of the bounding box
+    corners = rotated_vertices + center
+
+    # Unpack the coordinates of the four corners
+    x1, y1 = corners[0]
+    x2, y2 = corners[1]
+    x3, y3 = corners[2]
+    x4, y4 = corners[3]
+
+    return (x1, y1, x2, y2, x3, y3, x4, y4)
+
+
+def mask2rbboxes(mask_image):
+    """
+    Detect rotated bounding boxes of mask areas in the given binary mask image.
+
+    Parameters:
+    mask_image (numpy.ndarray): Binary mask image with pixel values of 0 or 255.
+
+    Returns:
+    list: List of rotated bounding box coordinates in the format ((x, y), (width, height), angle).
+    """
+    # Find contours in the mask image
+    contours, _ = cv2.findContours(
+        mask_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    rotated_bboxes = []
+
+    # Iterate through the contours and get the rotated bounding boxes
+    for contour in contours:
+        # Get the minimum area rectangle around the contour
+        rect = cv2.minAreaRect(contour)
+
+        # Unpack the rectangle parameters
+        (x, y), (width, height), angle = rect
+
+        # Add the rotated bounding box to the list
+        rotated_bboxes.append(((x, y), (width, height), angle))
+
+    return rotated_bboxes
+
+
+if __name__ == "__main__":
+    # Example usage
+    mask_image = cv2.imread(
+        "/workspace/mmsegmentation/demo/smooth.png", cv2.IMREAD_GRAYSCALE
+    )
+
+    rotated_bboxes = mask2rbboxes(mask_image)
+
+    rbbox_image = np.zeros_like(mask_image)
+    # Print the rotated bounding box coordinates
+    for bbox in rotated_bboxes:
+        print(bbox)
+        cv2.drawContours(
+            rbbox_image,
+            [np.intp(cv2.boxPoints(bbox))],
+            0,
+            (255 // 2),
+            2,
+        )
+    cv2.imwrite("/workspace/mmsegmentation/demo/smooth-rbbox.png", rbbox_image)
