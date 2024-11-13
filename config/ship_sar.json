@@ -1,5 +1,5 @@
 {
-  "algorithm": "phat_hien_tau",
+  "algorithm": "phat_hien_tau_sar",
   "config": "/workspace/sar/mmdetection/work_dirs/sar_atss_r101_fpn_1x_coco_640_640/sar_atss_r101_fpn_1x_coco_640_640.py",
   "checkpoint": "/workspace/sar/mmdetection/work_dirs/sar_atss_r101_fpn_1x_coco_640_640/best_coco_bbox_mAP_epoch_2.pth",
   "device": "cuda:0",

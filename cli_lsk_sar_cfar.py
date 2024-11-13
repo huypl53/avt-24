@@ -19,8 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.connector import get_db
 from app.model.task import TaskMd
 from app.schema import (
-    ChangeDetectionParam,
-    ChangeDetectionParam,
+    ShipSarDetectionParam,
     DetectionTaskType,
 )
 from app.service.binio import (
@@ -39,9 +38,8 @@ cfar_params = CFARParams(
     training_cells=(5, 5),  # Smaller training cells due to matrix size
     false_alarm_rate=1e-2,  # Higher false alarm rate
     scaling_factor=1.5,  # Lower scaling factor for more detections
+    min_training_cells=1,  # Minimum number of training cells required
 )
-# Create CFAR detector
-cfar_detector = CFAR2D(cfar_params)
 
 
 async def update_task_info(
@@ -153,14 +151,18 @@ async def async_main():
 
     current_task = None
     bname: str = ""
-    task_type = DetectionTaskType.CHANGE
+    task_type = DetectionTaskType.SHIP
 
-    config = open("./config/change.json", "r").read()
-    pre_param_conf = ChangeDetectionParam.model_validate_json(config)
-
+    config = open("./config/ship_sar_cfar.json", "r").read()
+    pre_param_conf = ShipSarDetectionParam.model_validate_json(config)
+    pre_param_conf = pre_param_conf.model_copy(
+        update=dict(cfar=cfar_params.model_dump())
+    )
+    # Create CFAR detector
+    cfar_detector = CFAR2D(cfar_params)
     while True:
 
-        input_params: ChangeDetectionParam = ChangeDetectionParam(
+        input_params: ShipSarDetectionParam = ShipSarDetectionParam(
             **pre_param_conf.model_dump()
         )
         extra_mesg = ""
@@ -186,13 +188,13 @@ async def async_main():
             update_process.start()
 
         def _update_param(input_param_dict: Dict):
-            nonlocal input_params, pre_param_conf
+            nonlocal input_params, pre_param_conf, cfar_detector
             if not pre_param_conf:
                 return
             input_param_no_file_dict = {
                 k: v
                 for k, v in input_param_dict.items()
-                if k not in ["input_file", "checkpoint", "config"]
+                if k not in ["input_file", "checkpoint"]
             }
 
             new_params_cnt = len(
@@ -212,13 +214,14 @@ async def async_main():
                 pre_param_conf = pre_param_conf.model_copy(
                     update=input_param_no_file_dict
                 )
-            input_params = ChangeDetectionParam.model_validate(
+            input_params = ShipSarDetectionParam.model_validate(
                 {
                     **pre_param_conf.model_dump(),
                     **input_param_no_file_dict,
                     "input_file": input_param_dict["input_file"],
                 }
             )
+            cfar_detector = CFAR2D(input_params.cfar)
 
         async def _process_image(
             input_file: str, return_bin: bool = False
@@ -241,6 +244,8 @@ async def async_main():
                 return bin_im, True
             image = np.asarray(bytearray(bin_im), dtype="uint8")
             im = cv2.imdecode(image, cv2.IMREAD_COLOR)
+            if im.shape[-1] == 3:
+                im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
             return im, True
 
         async def _update_task(msg: str = "", stat: int | None = None):
@@ -286,7 +291,7 @@ async def async_main():
         )
         tasks = await query_tasks_by_stmt(stmt_task, session)
 
-        print("----------")
+        print("Ship SAR by CFAR")
         try:
             for task_i, t in enumerate(tasks):
                 current_task = t
@@ -307,16 +312,20 @@ async def async_main():
                         await _update_task(msg)
                         continue
                     pass
-                _update_process_func(t)
-                msg = "Task is being processed"
-                t.process_id = os.getpid()
-                await _update_task(msg)
 
                 input_param_dict = parse_param_dict(t.task_param)
                 if "input_file" not in input_param_dict:
                     await _update_task("<input_file> field is requried!", 0)
                     continue
-
+                if "image_type" not in input_param_dict:
+                    await _update_task("<image_type> field is requried!", 0)
+                    continue
+                if input_param_dict["image_type"] != "SAR":
+                    continue
+                _update_process_func(t)
+                msg = "Task is being processed"
+                t.process_id = os.getpid()
+                await _update_task(msg)
                 _update_param(input_param_dict)
 
                 # t.task_param = stringify_dict_list(input_params.model_dump())
@@ -326,16 +335,17 @@ async def async_main():
                 t.task_stat = 1
                 t.task_message = "\n".join(["Successfully", extra_mesg])
                 try:
-                    task_params = ChangeDetectionParam.model_validate_json(t.task_param)
+                    task_params = ShipSarDetectionParam.model_validate_json(
+                        t.task_param
+                    )
                 except:
                     await _update_task("Invalid input param", 0)
                     continue
                 # image_list: List[Tuple[str | np.ndarray]] = []
                 failed_images: List[str] = []
-                pre_im: None | np.ndarray = None
-                features: List[np.ndarray] = []
-
                 raster_images: List[RasterImage] = []
+
+                images_lat_lon_keypoints = []
                 try:
                     image_files = task_params.input_file
                     if not len(image_files):
@@ -346,86 +356,63 @@ async def async_main():
                         if not success or bin_im is None:
                             failed_images.append(im_path)
                             continue
-                        raster_images.append(RasterImage(bin_im))
+                        raster_im = RasterImage(bin_im)
+                        raster_images.append(raster_im)
 
-                    raster_intersection = RasterImage.find_intersection(
-                        raster_images[0], raster_images[1:]
-                    )
-                    for raster_image in raster_images:
-                        cropped_im, _ = raster_image.crop_raster(raster_intersection)
-                        if not _:
-                            continue
-                        im = cropped_im.numpy
-                        if pre_im is None:
-                            pre_im = im
-                            continue
-                        fft_diff = gen_fft_diff_mask(pre_im, im, 64, 32)
-                        features.append(fft_diff)
-                        pre_im = im
-                    if len(features) == 0:
-                        raise ValueError("No raster feature found")
-                    features = np.mean(features, axis=0)
+                        image = np.asarray(bytearray(bin_im), dtype="uint8")
+                        gray_im = cv2.imdecode(image, cv2.IMREAD_COLOR)
+                        if gray_im.shape[-1] == 3:
+                            gray_im = cv2.cvtColor(gray_im, cv2.COLOR_BGR2GRAY)
+                        feature_image = mask2image(gray_im)
+                        top_detections = cfar_detector.get_top_detections(feature_image)
+                        mask_img = np.zeros_like(feature_image)
+
+                        for row, col, value in top_detections:
+                            mask_img[row, col] = value
+
+                        filter_image_path = input_params.mask_file
+                        if filter_image_path:
+                            try:
+                                image_filter = read_ftp_np_image(filter_image_path)
+                                filter_size = np.array(image_filter.shape[:2][::-1])
+                                mask_size = np.array(mask_img.shape[:2][::-1])
+                                if not (mask_size == filter_size).all():
+                                    image_filter = cv2.resize(image_filter, mask_size)
+                                    extra_mesg += ". Mask filter has different size"
+                                if len(image_filter.shape) > 2:
+                                    image_filter = cv2.cvtColor(
+                                        image_filter, cv2.COLOR_BGR2GRAY
+                                    )
+
+                                image_filter = image_filter != 0
+                                mask_img = mask_img * image_filter
+                            except Exception as e:
+                                extra_mesg += f". Reading mask filter failed at {filter_image_path}"
+                                pass
+                        sized_mask_img = cv2.resize(
+                            mask_img, feature_image.shape[:2][::-1]
+                        )
+                        sized_mask_img = cv2.normalize(
+                            sized_mask_img, None, 0, 255, cv2.NORM_MINMAX
+                        ).astype(np.uint8)
+                        boundary_mask_img = np.where(sized_mask_img > 0, 255, 0).astype(
+                            np.uint8
+                        )
+                        keypoint_list = find_boundary_keypoints(boundary_mask_img)
+                        lat_lon_keypoints = [
+                            [raster_im.pixel_to_coords(x, y)[::-1] for x, y in kp]
+                            for kp in keypoint_list
+                        ]
+                        images_lat_lon_keypoints.append(lat_lon_keypoints)
+
                 except Exception as e:
                     await _update_task(f"Got error: {e}", 0)
 
+                # output_dict = dict(images_lat_lon_keypoints)
                 if len(failed_images):
                     extra_mesg += f' Read image failed at: {";".join(failed_images)}'
+                t.task_output = json.dumps(images_lat_lon_keypoints)
 
-                feature_image = mask2image(features)
-                top_detections = cfar_detector.get_top_detections(feature_image)
-                mask_img = np.zeros_like(fft_diff)
-
-                for row, col, value in top_detections:
-                    mask_img[row, col] = value
-
-                filter_image_path = input_params.mask_file
-                if filter_image_path:
-                    try:
-                        image_filter = read_ftp_np_image(filter_image_path)
-                        filter_size = np.array(image_filter.shape[:2][::-1])
-                        mask_size = np.array(mask_img.shape[:2][::-1])
-                        if not (mask_size == filter_size).all():
-                            image_filter = cv2.resize(image_filter, mask_size)
-                            extra_mesg += ". Mask filter has different size"
-                        if len(image_filter.shape) > 2:
-                            image_filter = cv2.cvtColor(
-                                image_filter, cv2.COLOR_BGR2GRAY
-                            )
-
-                        image_filter = image_filter != 0
-                        mask_img = mask_img * image_filter
-                    except Exception as e:
-                        extra_mesg += (
-                            f". Reading mask filter failed at {filter_image_path}"
-                        )
-                        pass
-
-                intersection_np = raster_intersection.numpy
-
-                sized_mask_img = cv2.resize(mask_img, intersection_np.shape[:2][::-1])
-                sized_mask_img = cv2.normalize(
-                    sized_mask_img, None, 0, 255, cv2.NORM_MINMAX
-                ).astype(np.uint8)
-                boundary_mask_img = np.where(sized_mask_img > 0, 255, 0).astype(
-                    np.uint8
-                )
-                keypoint_list = find_boundary_keypoints(boundary_mask_img)
-                lat_lon_keypoints = [
-                    [raster_intersection.pixel_to_coords(x, y)[::-1] for x, y in kp]
-                    for kp in keypoint_list
-                ]
-
-                thermal_mask_image = cv2.applyColorMap(sized_mask_img, cv2.COLORMAP_HOT)
-                raster_intersection.replace_image_data(thermal_mask_image)
-
-                bname = os.path.basename(image_files[0]).rsplit(".", 1)[0]
-                file_path = os.path.join(input_params.out_dir, bname) + "_changes.tif"
-                # write_ftp_np_image(sized_mask_img, ".png", file_path)
-                write_ftp_bin_image(raster_intersection.to_bytes(), file_path)
-                output_dict = dict(
-                    {"output_file": file_path, "output": lat_lon_keypoints}
-                )
-                t.task_output = json.dumps(output_dict)
                 logger.info(f"Process task id = {t.id} successfully")
                 stop_update_task_continuously()
                 await asyncio.sleep(2)
@@ -452,8 +439,6 @@ async def async_main():
         finally:
             stop_update_task_continuously()
             await asyncio.sleep(5)
-
-        print("----------")
 
 
 if __name__ == "__main__":

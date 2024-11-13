@@ -10,6 +10,8 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
+from core.raster import RasterImage
+from core.segment_slice import SlidingWindowInference
 import torch
 from dictdiffer import diff
 from mmdet.apis import init_detector
@@ -17,6 +19,7 @@ from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import select, text
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
+from mmseg.apis import init_segmentor, inference_segmentor
 
 from app.db.connector import get_db
 from app.model.task import TaskMd
@@ -37,6 +40,7 @@ from core.box_record import BoxDetect, BoxRecord
 from core.ship.classifier import classify_ship
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
+from utils.processing import find_boundary_keypoints
 from utils.raster import (
     angle_to_bearings,
     latlong2meter,
@@ -175,6 +179,7 @@ async def async_main():
     # task_id = int(sys.argv[1])
 
     model = None
+    model_runway = None
     current_task = None
     reload_model = False
     tmp_im_path = ""
@@ -189,11 +194,30 @@ async def async_main():
     ]
     _num_task_types = len(avail_task_types)
     _i = 0
+
     while True:
         task_type = avail_task_types[_i % _num_task_types]
         _i += 1
         if _i >= _num_task_types:
             _i = 0
+
+        if model_runway is None:
+            config_file = (
+                "/workspace/mmsegmentation/work_dirs/runway_config/runway_config.py"
+            )
+            checkpoint_file = (
+                "/workspace/mmsegmentation/work_dirs/runway_config/latest.pth"
+            )
+            model_runway = init_segmentor(config_file, checkpoint_file, device="cuda:0")
+
+        def infer_image_runway(img) -> np.ndarray | None:
+            nonlocal model_runway
+            if model_runway is None:
+                return None
+
+            result = inference_segmentor(model_runway, img)
+            # print(f'Model result shape: {result[0].shape}')
+            return result[0]
 
         pre_param_conf = load_task_config(task_type)
         if not pre_param_conf:
@@ -405,6 +429,7 @@ async def async_main():
                 detection_history: List[List[List[BoxDetect]]] = [
                     [] for _ in range(len(input_params.input_file))
                 ]
+                seg_runway_results = []
                 for im_th, image_path in enumerate(input_params.input_file):
                     image_id = image_path
                     _, success = await _process_image(image_path)
@@ -550,12 +575,41 @@ async def async_main():
                     detect_results.append(
                         {"image_id": image_id, "detections": image_detect_results}
                     )
+                    # -----Segment runway--------
+                    slicer = SlidingWindowInference(
+                        inference_fn=infer_image_runway,
+                        window_size=(1024, 1024),
+                        smoothier=True,
+                    )
+
+                    runway_mask = slicer(im)
+                    boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(
+                        np.uint8
+                    )
+                    keypoint_list = find_boundary_keypoints(boundary_mask_img)
+
+                    raster_image = RasterImage(tmp_im_path)
+                    raster_image.replace_image_data(im)
+                    lat_lon_keypoints = [
+                        [raster_image.pixel_to_coords(x, y)[::-1] for x, y in kp]
+                        for kp in keypoint_list
+                    ]
+                    seg_runway_results.append(
+                        {
+                            "image_id": image_id,
+                            "runway": lat_lon_keypoints,
+                        }
+                    )
                 output_dict = dict(
                     {
                         "detections": [
                             image_result["detections"]
                             for image_result in detect_results
-                        ]
+                        ],
+                        "runway": [
+                            image_result["runway"]
+                            for image_result in seg_runway_results
+                        ],
                     }
                 )
 
@@ -632,7 +686,7 @@ async def async_main():
                     # images_ship_results = [
                     #     image_result["detections"] for image_result in detect_results
                     # ]
-                    t.task_output = json.dumps(output_dict["detections"])
+                    t.task_output = json.dumps(output_dict)
                 t.task_stat = 1
                 t.task_message = "\n".join(["Successfully", extra_mesg])
                 if os.path.isfile(tmp_im_path):

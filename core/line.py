@@ -2,8 +2,6 @@ import cv2
 import numpy as np
 from sklearn.cluster import DBSCAN
 
-# fig, axes = plt.subplots(5, 1, figsize=(24, 56))
-
 
 def preprocess_image(image):
     """Preprocess the image with focus on runway features"""
@@ -97,25 +95,32 @@ def cluster_similar_lines(filtered_lines):
     ]
 
 
-def detect_runway(image, params):
+def detect_runway(image, params, debug=False):
     """Main function to detect runway"""
     runway_mask = create_runway_mask(image)
-    # axes[0].imshow(runway_mask, cmap='gray')
-    # axes[0].set_title('Runway Mask')
+    if debug:
+        import matplotlib.pyplot as plt
+
+        fig, axes = plt.subplots(5, 1, figsize=(24, 56))
+        axes[0].imshow(runway_mask, cmap="gray")
+        axes[0].set_title("Runway Mask")
 
     preprocessed = preprocess_image(image)
-    # axes[1].imshow(preprocessed)
-    # axes[1].set_title('Preprocessed Image')
+    if debug:
+        axes[1].imshow(preprocessed)
+        axes[1].set_title("Preprocessed Image")
 
     preprocessed = cv2.bitwise_and(preprocessed, preprocessed, mask=runway_mask)
-    # axes[2].imshow(preprocessed)
-    # axes[2].set_title('Masked Preprocessed Image')
+    if debug:
+        axes[2].imshow(preprocessed)
+        axes[2].set_title("Masked Preprocessed Image")
 
     edges = cv2.Canny(
         preprocessed, params["canny_low"], params["canny_high"], apertureSize=3
     )
-    # axes[3].imshow(preprocessed, cmap='gray')
-    # axes[3].set_title('Canny Edges')
+    if debug:
+        axes[3].imshow(preprocessed, cmap="gray")
+        axes[3].set_title("Canny Edges")
 
     lines = cv2.HoughLinesP(
         edges,
@@ -130,13 +135,17 @@ def detect_runway(image, params):
     filtered_lines = filter_runway_lines(lines, image.shape)
     final_lines = cluster_similar_lines(filtered_lines)
 
-    # Draw results
-    # result = image.copy()
-    # if final_lines:
-    #     for line in final_lines:
-    #         x1, y1, x2, y2 = line[0]
-    #         cv2.line(result, (x1, y1), (x2, y2), (0, 0, 255), 2)
+    if debug:
+        # Draw results
+        result = image.copy()
+        if final_lines:
+            for line in final_lines:
+                x1, y1, x2, y2 = line[0]
+                cv2.line(result, (x1, y1), (x2, y2), (0, 0, 255), 2)
 
-    # axes[4].imshow(result)
-    # axes[4].set_title('Detected Runway')
+        axes[4].imshow(result)
+        axes[4].set_title("Detected Runway")
+        plt.savefig("./line-debug.png")
+        plt.show()
+
     return final_lines

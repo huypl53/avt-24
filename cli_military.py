@@ -522,7 +522,7 @@ async def async_main():
                 # Detect runway lines
                 with open(r"./config/runway.json", "r") as f:
                     line_params = json.load(f)
-                runway_lines = detect_runway(im, line_params)
+                runway_lines = detect_runway(im, line_params, debug=True)
 
                 flat_runway_lines = np.array(runway_lines).reshape(-1, 4)
                 flat_runway_lines = flat_runway_lines.reshape(-1, 2)
@@ -531,7 +531,7 @@ async def async_main():
                     flat_runway_lines, tif_meta
                 )
                 lat_lon_runway_lines = (
-                    np.array(lat_lon_runway_lines).reshape(-1, 4)[..., ::-1].tolist()
+                    np.array(lat_lon_runway_lines).reshape(-1, 2, 2)[..., ::-1].tolist()
                 )
                 output_dict = dict(
                     {
@@ -546,7 +546,6 @@ async def async_main():
                 if not task_infer_image_success:
                     await _update_task("Task inference failed!", 0)
                 t.task_output = json.dumps(output_dict)
-                t.task_stat = 1
                 t.task_message = "\n".join(["Successfully", extra_mesg])
                 if os.path.isfile(tmp_im_path):
                     os.remove(tmp_im_path)

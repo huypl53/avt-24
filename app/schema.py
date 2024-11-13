@@ -2,6 +2,7 @@ from enum import Enum
 from typing import List, Optional, Union
 
 from pydantic import BaseModel
+from utils.cfar import CFARParams
 
 
 class DetectionTaskType(Enum):
@@ -143,4 +144,9 @@ class ExtractedObject(BaseModel):
 
 class ChangeDetectionParam(IOParam):
     mask_file: Optional[str] = None
+    pass
+
+
+class ShipSarDetectionParam(IOParam):
+    cfar: Optional[CFARParams] = dict()
     pass
