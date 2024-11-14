@@ -8,7 +8,6 @@ import traceback
 from datetime import datetime
 from typing import Dict, List, Tuple
 
-from core.raster import RasterImage
 import cv2
 import numpy as np
 from dictdiffer import diff
@@ -18,16 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connector import get_db
 from app.model.task import TaskMd
-from app.schema import (
-    ShipSarDetectionParam,
-    DetectionTaskType,
-)
+from app.schema import DetectionTaskType, ShipSarDetectionParam
 from app.service.binio import (
     read_ftp_bin_image,
     read_ftp_np_image,
     write_ftp_bin_image,
     write_ftp_np_image,
 )
+from core.raster import RasterImage
 from log import logger
 from utils.cfar import CFAR2D, CFARParams
 from utils.processing import find_boundary_keypoints

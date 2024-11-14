@@ -49,9 +49,12 @@ def get_rotated_bbox_corners(bbox):
         ]
     )
 
-    # Rotate the vertices based on the angle
+    # Add a column of ones to make homogeneous coordinates
+    vertices_homogeneous = np.hstack([vertices, np.ones((4, 1))])
+
+    # Get rotation matrix and apply transformation
     R = cv2.getRotationMatrix2D((0, 0), angle, 1)
-    rotated_vertices = (R @ vertices.T).T
+    rotated_vertices = vertices_homogeneous @ R.T
 
     # Translate the rotated vertices to the actual center of the bounding box
     corners = rotated_vertices + center

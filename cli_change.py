@@ -286,7 +286,7 @@ async def async_main():
         )
         tasks = await query_tasks_by_stmt(stmt_task, session)
 
-        print("----------")
+        print("----Detect changes-----")
         try:
             for task_i, t in enumerate(tasks):
                 current_task = t
@@ -452,8 +452,6 @@ async def async_main():
         finally:
             stop_update_task_continuously()
             await asyncio.sleep(5)
-
-        print("----------")
 
 
 if __name__ == "__main__":

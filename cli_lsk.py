@@ -264,16 +264,19 @@ async def async_main():
                 if k not in ["input_file", "checkpoint", "config"]
             }
 
-            new_params_cnt = len(
-                list(
-                    diff(
+            new_params =                     diff(
                         input_param_no_file_dict,
                         dict(pre_param_conf),
                     )
+
+            new_params_cnt = len(
+                list(
+                    new_params
                 )
             )
 
             if new_params_cnt or not model:
+                logger.info(f"new_params: {new_params}")
                 if model:
                     clear_model(model)
                     model = None
@@ -565,6 +568,9 @@ async def async_main():
                         {"image_id": image_id, "detections": image_detect_results}
                     )
                     # -----Segment runway--------
+                    raster_image = RasterImage(tmp_im_path)
+                    raster_image.replace_image_data(im)
+
                     slicer = SlidingWindowInference(
                         inference_fn=infer_image_runway,
                         window_size=(1024, 1024),
@@ -581,26 +587,28 @@ async def async_main():
                     runway_xyxyxyxy = [
                         get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
                     ]
+                    
+                    runway_xy = np.array(runway_xyxyxyxy).reshape(-1, 2)
+                    runway_lat_lon_xy = [raster_image.pixel_to_coords(xy[0], xy[1]) for xy in runway_xy]
+                    runway_lat_lon_xyxyxyxy = np.array(runway_lat_lon_xy).reshape(-1, 8)
 
                     runway_lat_lon_wh = np.array(
                         [
                             [
                                 latlong2meter(
-                                    row[i],
                                     row[i + 1],
-                                    row[i + 2],
+                                    row[i],
                                     row[i + 3],
+                                    row[i + 2],
                                 )
                                 for i in range(0, 3, 2)
                             ]
-                            for row in runway_xyxyxyxy
+                            for row in runway_lat_lon_xyxyxyxy
                         ]
                     )
-                    raster_image = RasterImage(tmp_im_path)
-                    raster_image.replace_image_data(im)
 
                     runway_center_lat_lon = [
-                        raster_image.pixel_to_coords(rbbox[0], rbbox[1])
+                        raster_image.pixel_to_coords(*rbbox[0])
                         for rbbox in runway_rbboxes
                     ]
                     runway_coords = np.array(
@@ -690,6 +698,8 @@ async def async_main():
 
         finally:
             stop_update_task_continuously()
+            if current_task and current_task.task_stat != 1:
+                await _update_task(stat=0)
             await asyncio.sleep(5)
 
 
