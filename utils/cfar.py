@@ -1,8 +1,7 @@
-import numpy as np
-from typing import Tuple, List
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
+import numpy as np
 from pydantic import BaseModel
 
 

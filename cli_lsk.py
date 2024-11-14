@@ -10,16 +10,14 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
-from core.raster import RasterImage
-from core.segment_slice import SlidingWindowInference
 import torch
 from dictdiffer import diff
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
+from mmseg.apis import inference_segmentor, init_segmentor
 from sqlalchemy import select, text
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
-from mmseg.apis import init_segmentor, inference_segmentor
 
 from app.db.connector import get_db
 from app.model.task import TaskMd
@@ -37,6 +35,8 @@ from app.service.binio import (
     write_text_file,
 )
 from core.box_record import BoxDetect, BoxRecord
+from core.raster import RasterImage
+from core.segment_slice import SlidingWindowInference
 from core.ship.classifier import classify_ship
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
@@ -264,16 +264,12 @@ async def async_main():
                 if k not in ["input_file", "checkpoint", "config"]
             }
 
-            new_params =                     diff(
-                        input_param_no_file_dict,
-                        dict(pre_param_conf),
-                    )
-
-            new_params_cnt = len(
-                list(
-                    new_params
-                )
+            new_params = diff(
+                input_param_no_file_dict,
+                dict(pre_param_conf),
             )
+
+            new_params_cnt = len(list(new_params))
 
             if new_params_cnt or not model:
                 logger.info(f"new_params: {new_params}")
@@ -443,130 +439,133 @@ async def async_main():
                     if not success:
                         continue
                     classes_results, success = await _infer_image_params()
-                    if not success:
-                        continue
-                    if classes_results is None or not len(classes_results):
+                    # if not success:
+                    #     continue
+                    if success and classes_results is not None and len(classes_results):
                         # await _update_task("No detection", 1)
-                        continue
 
-                    # TODO: handle score thresh
-                    # classes_results = np.array(classes_results)
-                    image_detect_results: List[Dict] = []
-                    for class_id, class_rbboxes in enumerate(classes_results):
-                        detection_history[im_th].append([])
-                        # output = result[:, result[..., -1] > input_params.score_thr]
-                        output = np.array(class_rbboxes)
-                        output = output[output[..., -1] > input_params.score_thr]
+                        # TODO: handle score thresh
+                        # classes_results = np.array(classes_results)
+                        image_detect_results: List[Dict] = []
+                        for class_id, class_rbboxes in enumerate(classes_results):
+                            detection_history[im_th].append([])
+                            # output = result[:, result[..., -1] > input_params.score_thr]
+                            output = np.array(class_rbboxes)
+                            output = output[output[..., -1] > input_params.score_thr]
 
-                        if not len(output):
-                            continue
-                        xyxyxyxy = xywhr2xyxyxyxy(output)
-                        output[..., 4] = np.degrees(output[..., 4])
-                        rbboxes = list(
-                            [
-                                [
-                                    int(box[0]),
-                                    int(box[1]),
-                                    int(box[2]),
-                                    int(box[3]),
-                                    box[4],
-                                ]
-                                for box in output
-                            ]
-                        )
-                        valid_idx: List[int] = []
-                        patches: List[np.ndarray] = []
-                        for i, box in enumerate(rbboxes):
-                            patch = crop_rotated_rectangle(
-                                im, box
-                            )  # patch if None if crop failed
-                            if patch is not None:
-                                patches.append(patch)
-                                valid_idx.append(i)
-                        output = output[valid_idx]
-                        xyxyxyxy = xyxyxyxy[valid_idx]
-                        flat_xy = xyxyxyxy.reshape(-1, 2)
-
-                        output = angle_to_bearings(output, 4)
-
-                        tif_meta = read_tif_meta(tmp_im_path)
-                        try:
-                            lat_long_center = pixel_point_to_lat_long(
-                                output[..., 0:2], tif_meta
-                            )
-                            latlong_xy = pixel_point_to_lat_long(flat_xy, tif_meta)
-                            latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4, 2)
-                            lat_long_wh = np.array(
+                            if not len(output):
+                                continue
+                            xyxyxyxy = xywhr2xyxyxyxy(output)
+                            output[..., 4] = np.degrees(output[..., 4])
+                            rbboxes = list(
                                 [
                                     [
-                                        latlong2meter(
-                                            row[i][1],
-                                            row[i][0],
-                                            row[i + 1][1],
-                                            row[i + 1][0],
-                                        )
-                                        for i in range(2)
+                                        int(box[0]),
+                                        int(box[1]),
+                                        int(box[2]),
+                                        int(box[3]),
+                                        box[4],
                                     ]
-                                    for row in latlong_xyxyxyxy
+                                    for box in output
                                 ]
                             )
-                        except Exception:
-                            await _update_task("Read crs from image failed!")
-                            continue
-                        lat_long_coords = np.concatenate(
-                            (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
-                        )
-                        if task_type == DetectionTaskType.SHIP:
-                            # match_adsb_indices = await check_adsb(lat_long_coords)
-                            # if match_adsb_indices is not None:
-                            #     patches = [
-                            #         p
-                            #         for i, p in enumerate(patches)
-                            #         if i in match_adsb_indices
-                            #     ]
-                            #     lat_long_coords = lat_long_coords[match_adsb_indices]
-                            pass
-                        for box_i, (p, c) in enumerate(zip(patches, lat_long_coords)):
-                            lb_im_id = f"{class_id:03d}_{box_i:04d}"
-                            path = os.path.join(save_dir, lb_im_id)
-                            patch_lb_path = path + ".txt"
-                            patch_im_path = path + ".png"
-                            # Box cx, cy, w, h, angle
-                            coords = c.tolist()
-                            write_ftp_np_image(p, ".png", patch_im_path)
-                            write_text_file(
-                                " ".join([str(i) for i in coords]), patch_lb_path
-                            )
+                            valid_idx: List[int] = []
+                            patches: List[np.ndarray] = []
+                            for i, box in enumerate(rbboxes):
+                                patch = crop_rotated_rectangle(
+                                    im, box
+                                )  # patch if None if crop failed
+                                if patch is not None:
+                                    patches.append(patch)
+                                    valid_idx.append(i)
+                            output = output[valid_idx]
+                            xyxyxyxy = xyxyxyxy[valid_idx]
+                            flat_xy = xyxyxyxy.reshape(-1, 2)
 
-                            if task_type != DetectionTaskType.SHIP:
-                                if class_id in ObjectCategory:
-                                    cls_name = ObjectCategory[class_id]
-                                else:
-                                    cls_name = str(class_id)
-                            else:
-                                try:
-                                    if class_id == 1:
-                                        cls_name = classify_ship(p)
-                                    else:
+                            output = angle_to_bearings(output, 4)
+
+                            tif_meta = read_tif_meta(tmp_im_path)
+                            try:
+                                lat_long_center = pixel_point_to_lat_long(
+                                    output[..., 0:2], tif_meta
+                                )
+                                latlong_xy = pixel_point_to_lat_long(flat_xy, tif_meta)
+                                latlong_xyxyxyxy = np.array(latlong_xy).reshape(
+                                    -1, 4, 2
+                                )
+                                lat_long_wh = np.array(
+                                    [
+                                        [
+                                            latlong2meter(
+                                                row[i][1],
+                                                row[i][0],
+                                                row[i + 1][1],
+                                                row[i + 1][0],
+                                            )
+                                            for i in range(2)
+                                        ]
+                                        for row in latlong_xyxyxyxy
+                                    ]
+                                )
+                            except Exception:
+                                await _update_task("Read crs from image failed!")
+                                continue
+                            lat_long_coords = np.concatenate(
+                                (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
+                            )
+                            if task_type == DetectionTaskType.SHIP:
+                                # match_adsb_indices = await check_adsb(lat_long_coords)
+                                # if match_adsb_indices is not None:
+                                #     patches = [
+                                #         p
+                                #         for i, p in enumerate(patches)
+                                #         if i in match_adsb_indices
+                                #     ]
+                                #     lat_long_coords = lat_long_coords[match_adsb_indices]
+                                pass
+                            for box_i, (p, c) in enumerate(
+                                zip(patches, lat_long_coords)
+                            ):
+                                lb_im_id = f"{class_id:03d}_{box_i:04d}"
+                                path = os.path.join(save_dir, lb_im_id)
+                                patch_lb_path = path + ".txt"
+                                patch_im_path = path + ".png"
+                                # Box cx, cy, w, h, angle
+                                coords = c.tolist()
+                                write_ftp_np_image(p, ".png", patch_im_path)
+                                write_text_file(
+                                    " ".join([str(i) for i in coords]), patch_lb_path
+                                )
+
+                                if task_type != DetectionTaskType.SHIP:
+                                    if class_id in ObjectCategory:
                                         cls_name = ObjectCategory[class_id]
-                                except:
-                                    extra_mesg += "Classify ship failed!"
-                                    cls_name = str(DetectionTaskType.SHIP.value)
+                                    else:
+                                        cls_name = str(class_id)
+                                else:
+                                    try:
+                                        if class_id == 1:
+                                            cls_name = classify_ship(p)
+                                        else:
+                                            cls_name = ObjectCategory[class_id]
+                                    except:
+                                        extra_mesg += "Classify ship failed!"
+                                        cls_name = str(DetectionTaskType.SHIP.value)
 
-                            detect_obj_id = f"{im_th:03d}-{lb_im_id}"
-                            image_detect_results.append(
-                                ExtractedObject(
-                                    id=detect_obj_id,
-                                    path=patch_im_path,
-                                    coords=coords,
-                                    lb_path=patch_lb_path,
-                                    class_id=cls_name,
-                                ).model_dump()
-                            )
+                                detect_obj_id = f"{im_th:03d}-{lb_im_id}"
+                                image_detect_results.append(
+                                    ExtractedObject(
+                                        id=detect_obj_id,
+                                        path=patch_im_path,
+                                        coords=coords,
+                                        lb_path=patch_lb_path,
+                                        class_id=cls_name,
+                                    ).model_dump()
+                                )
 
-                    detect_results.append(
-                        {"image_id": image_id, "detections": image_detect_results}
-                    )
+                        detect_results.append(
+                            {"image_id": image_id, "detections": image_detect_results}
+                        )
                     # -----Segment runway--------
                     raster_image = RasterImage(tmp_im_path)
                     raster_image.replace_image_data(im)
@@ -587,9 +586,11 @@ async def async_main():
                     runway_xyxyxyxy = [
                         get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
                     ]
-                    
+
                     runway_xy = np.array(runway_xyxyxyxy).reshape(-1, 2)
-                    runway_lat_lon_xy = [raster_image.pixel_to_coords(xy[0], xy[1]) for xy in runway_xy]
+                    runway_lat_lon_xy = [
+                        raster_image.pixel_to_coords(xy[0], xy[1]) for xy in runway_xy
+                    ]
                     runway_lat_lon_xyxyxyxy = np.array(runway_lat_lon_xy).reshape(-1, 8)
 
                     runway_lat_lon_wh = np.array(
