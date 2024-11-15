@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connector import get_db
 from app.model.task import TaskMd
-from app.schema import DetectionTaskType, ShipSarDetectionParam
+from app.schema import DetectionTaskType, ExtractedObject, ShipSarDetectionParam
 from app.service.binio import (
     read_ftp_bin_image,
     read_ftp_np_image,
@@ -27,7 +27,12 @@ from app.service.binio import (
 from core.raster import RasterImage
 from log import logger
 from utils.cfar import CFAR2D, CFARParams
-from utils.processing import find_boundary_keypoints
+from utils.processing import (
+    find_boundary_keypoints,
+    get_rotated_bbox_corners,
+    mask2rbboxes,
+)
+from utils.raster import latlong2meter
 from utils.transform import gen_fft_diff_mask, mask2image
 
 cfar_params = CFARParams(
@@ -68,6 +73,14 @@ def stringify_dict_list(param: Dict):
 
 
 def filter_3d_array(array3d: np.ndarray, filter2d: np.ndarray) -> np.ndarray:
+    """Filter a 3D array using a 2D boolean mask array.
+
+    Args:
+        array3d: 3D input array to filter
+        filter2d: 2D boolean mask array
+    Returns:
+        Filtered 3D array
+    """
     output = np.array(
         [
             [bbox for bbox, mask in zip(class_boxes, bbox_masks) if mask]
@@ -85,6 +98,16 @@ def update_task_chronologically(
     start=2,
     step: int = 1,
 ):
+    """Update task status incrementally at regular intervals.
+
+    Args:
+        task_id: ID of the task to update
+        stop_event: Event to signal when updates should stop
+        task_type: Type of task being processed
+        session: Optional database session
+        start: Initial status value (default: 2)
+        step: Increment step size (default: 1)
+    """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -395,12 +418,58 @@ async def async_main():
                         boundary_mask_img = np.where(sized_mask_img > 0, 255, 0).astype(
                             np.uint8
                         )
-                        keypoint_list = find_boundary_keypoints(boundary_mask_img)
-                        lat_lon_keypoints = [
-                            [raster_im.pixel_to_coords(x, y)[::-1] for x, y in kp]
-                            for kp in keypoint_list
+                        ship_rbboxes = mask2rbboxes(boundary_mask_img)
+                        ship_xyxyxyxy = [
+                            get_rotated_bbox_corners(rbbox) for rbbox in ship_rbboxes
                         ]
-                        images_lat_lon_keypoints.append(lat_lon_keypoints)
+
+                        ship_xy = np.array(ship_xyxyxyxy).reshape(-1, 2)
+                        ship_lat_lon_xy = [
+                            raster_im.pixel_to_coords(xy[0], xy[1]) for xy in ship_xy
+                        ]
+                        ship_lat_lon_xyxyxyxy = np.array(ship_lat_lon_xy).reshape(-1, 8)
+
+                        ship_lat_lon_wh = np.array(
+                            [
+                                [
+                                    latlong2meter(
+                                        row[i + 1],
+                                        row[i],
+                                        row[i + 3],
+                                        row[i + 2],
+                                    )
+                                    for i in range(0, 3, 2)
+                                ]
+                                for row in ship_lat_lon_xyxyxyxy
+                            ]
+                        )
+
+                        ship_center_lat_lon = [
+                            raster_im.pixel_to_coords(*rbbox[0])
+                            for rbbox in ship_rbboxes
+                        ]
+                        ship_coords = np.array(
+                            [
+                                [center[0], center[1], wh[0], wh[1], rbbox[-1]]
+                                for center, wh, rbbox in zip(
+                                    ship_center_lat_lon, ship_lat_lon_wh, ship_rbboxes
+                                )
+                            ]
+                        )
+
+                        images_lat_lon_keypoints.append(
+                            {
+                                "image_id": im_path,
+                                "ship": [
+                                    ExtractedObject(
+                                        id=f"{im_path}_{i:04d}",
+                                        coords=coords,
+                                        class_id="tau_thuyen",
+                                    ).model_dump()
+                                    for i, coords in enumerate(ship_coords)
+                                ],
+                            }
+                        )
 
                 except Exception as e:
                     await _update_task(f"Got error: {e}", 0)

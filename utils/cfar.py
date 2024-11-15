@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 from pydantic import BaseModel
+from tqdm import tqdm
 
 
 # @dataclass
@@ -51,9 +52,14 @@ class CFAR2D:
 
         return window[guard_mask]
 
-    def apply(self, matrix: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def apply(
+        self, matrix: np.ndarray, stride: int = 1
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Apply CFAR detection to the input matrix
+        Apply CFAR detection to the input matrix with strided processing
+        Args:
+            matrix: Input matrix
+            stride: Step size for processing (default=1 for full processing)
         Returns:
             - threshold_matrix: Matrix of calculated thresholds
             - detections: Binary matrix indicating detections
@@ -66,23 +72,26 @@ class CFAR2D:
         tr, tc = self.params.training_cells
         padded_matrix = np.pad(matrix, ((tr, tr), (tc, tc)), mode="reflect")
 
-        for i in range(rows):
-            for j in range(cols):
+        # Process with stride
+
+        for i in tqdm(range(0, rows, stride), leave=False, desc="rows"):
+            for j in tqdm(range(0, cols, stride), leave=False, desc="cols"):
                 # Get training cells
                 training_cells = self._get_training_cells(
                     padded_matrix,
-                    i + tr,  # Adjust for padding
-                    j + tc,  # Adjust for padding
+                    i + tr,
+                    j + tc,
                 )
 
                 if len(training_cells) >= self.params.min_training_cells:
                     # Calculate threshold using mean and scaling factor
                     threshold = np.mean(training_cells) * self.params.scaling_factor
-                    threshold_matrix[i, j] = threshold
 
-                    # Compare CUT with threshold
-                    if matrix[i, j] > threshold:
-                        detections[i, j] = True
+                    # Apply threshold to the entire stride window
+                    end_i = min(i + stride, rows)
+                    end_j = min(j + stride, cols)
+                    threshold_matrix[i:end_i, j:end_j] = threshold
+                    detections[i:end_i, j:end_j] = matrix[i:end_i, j:end_j] > threshold
 
         return threshold_matrix, detections
 
@@ -92,7 +101,8 @@ class CFAR2D:
         """
         Get top N detections sorted by value
         """
-        _, detections = self.apply(matrix)
+        stride = min(matrix.shape[:2]) // 32
+        _, detections = self.apply(matrix, stride=stride)
 
         # Get all detection coordinates and values
         detection_coords = np.where(detections)

@@ -1,11 +1,15 @@
+import multiprocessing
+from io import BytesIO
+from pathlib import Path
+from typing import Callable, List, Optional, Tuple, TypeVar, Union
+
 import numpy as np
 import rasterio
-from rasterio.windows import Window
 from rasterio.errors import RasterioError
-from typing import Union, List, Tuple, Optional
-from pathlib import Path
-from io import BytesIO
 from rasterio.warp import transform
+from rasterio.windows import Window
+
+from core.multi_processing.parallel import ParallelProcessor
 
 
 class RasterImageError(Exception):
@@ -14,14 +18,20 @@ class RasterImageError(Exception):
     pass
 
 
-class RasterImage:
-    def __init__(self, source: Union[str, Path, bytes]):
+T = TypeVar("T")
+R = TypeVar("R")
+
+
+class RasterImage(ParallelProcessor[T, R]):
+    def __init__(self, source: Union[str, Path, bytes], max_workers: int = None):
         """
         Initialize RasterImage with either a file path or bytes data
 
         Args:
             source: Path to the TIFF file or bytes containing TIFF data
+            max_workers: Number of worker processes for parallel processing
         """
+        super().__init__(max_workers or multiprocessing.cpu_count())
         self._source = source
         self._dataset = None
         self._numpy_data = None
@@ -241,6 +251,34 @@ class RasterImage:
             with memfile.open(**self._dataset.profile) as dst:
                 dst.write(self._numpy_data.transpose(2, 0, 1))
             return memfile.read()
+
+    def process_coordinates_parallel(
+        self, keypoints: List[List[Tuple[int, int]]]
+    ) -> List[List[Tuple[float, float]]]:
+        """
+        Convert pixel coordinates to lat/lon coordinates in parallel
+
+        Args:
+            keypoints: List of lists of (x, y) pixel coordinates
+
+        Returns:
+            List of lists of (lat, lon) coordinates
+        """
+        return self.process_parallel(keypoints, self._convert_keypoint_list)
+
+    def _convert_keypoint_list(
+        self, keypoint_list: List[Tuple[int, int]]
+    ) -> List[Tuple[float, float]]:
+        """
+        Convert a list of pixel coordinates to lat/lon coordinates
+
+        Args:
+            keypoint_list: List of (x, y) pixel coordinates
+
+        Returns:
+            List of (lat, lon) coordinates
+        """
+        return [self.pixel_to_coords(x, y) for x, y in keypoint_list]
 
 
 if __name__ == "__main__":

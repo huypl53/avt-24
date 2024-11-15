@@ -34,7 +34,7 @@ from app.service.binio import (
     write_ftp_np_image,
     write_text_file,
 )
-from core.box_record import BoxDetect, BoxRecord
+from core.box_record import BoxDetect
 from core.raster import RasterImage
 from core.segment_slice import SlidingWindowInference
 from core.ship.classifier import classify_ship
@@ -507,6 +507,10 @@ async def async_main():
                                         for row in latlong_xyxyxyxy
                                     ]
                                 )
+                                lat_long_wh = [
+                                    wh if wh[0] < wh[1] else wh[::-1]
+                                    for wh in lat_long_wh
+                                ]
                             except Exception:
                                 await _update_task("Read crs from image failed!")
                                 continue
@@ -537,22 +541,16 @@ async def async_main():
                                     " ".join([str(i) for i in coords]), patch_lb_path
                                 )
 
-                                if task_type != DetectionTaskType.SHIP:
-                                    if class_id in ObjectCategory:
-                                        cls_name = ObjectCategory[class_id]
+                                try:
+                                    if class_id == 1:
+                                        cls_name = classify_ship(p)
                                     else:
-                                        cls_name = str(class_id)
-                                else:
-                                    try:
-                                        if class_id == 1:
-                                            cls_name = classify_ship(p)
-                                        else:
-                                            cls_name = ObjectCategory[class_id]
-                                    except:
-                                        extra_mesg += "Classify ship failed!"
-                                        cls_name = str(DetectionTaskType.SHIP.value)
+                                        cls_name = ObjectCategory[class_id]
+                                except:
+                                    extra_mesg += "Classify ship failed!"
+                                    cls_name = str(DetectionTaskType.SHIP.value)
 
-                                detect_obj_id = f"{im_th:03d}-{lb_im_id}"
+                                detect_obj_id = f"{im_th:03d}-{lb_im_id}-{cls_name}"
                                 image_detect_results.append(
                                     ExtractedObject(
                                         id=detect_obj_id,
@@ -608,6 +606,10 @@ async def async_main():
                         ]
                     )
 
+                    runway_lat_lon_wh = [
+                        wh if wh[0] < wh[1] else wh[::-1] for wh in runway_lat_lon_wh
+                    ]
+
                     runway_center_lat_lon = [
                         raster_image.pixel_to_coords(*rbbox[0])
                         for rbbox in runway_rbboxes
@@ -625,7 +627,7 @@ async def async_main():
                             "image_id": image_id,
                             "runway": [
                                 ExtractedObject(
-                                    id=detect_obj_id,
+                                    id=f"{im_th:03d}-duong_bay",
                                     coords=coords,
                                     class_id="duong_bay",
                                 ).model_dump()
@@ -633,20 +635,6 @@ async def async_main():
                             ],
                         }
                     )
-
-                # output_dict = dict(
-                #     {
-                #         "detections": [
-                #             image_result["detections"]
-                #             for image_result in detect_results
-                #         ],
-                #         "runway": [
-                #             image_result["runway"]
-                #             for image_result in seg_runway_results
-                #         ],
-                #     }
-                # )
-
                 output_dict = [
                     image_result["detections"] for image_result in detect_results
                 ]
@@ -656,11 +644,7 @@ async def async_main():
                 if not task_infer_image_success:
                     await _update_task("Task inference failed!", 0)
 
-                if task_type == DetectionTaskType.SHIP:
-                    # images_ship_results = [
-                    #     image_result["detections"] for image_result in detect_results
-                    # ]
-                    t.task_output = json.dumps(output_dict)
+                t.task_output = json.dumps(output_dict)
                 t.task_stat = 1
                 t.task_message = "\n".join(["Successfully", extra_mesg])
                 if os.path.isfile(tmp_im_path):
