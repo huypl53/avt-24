@@ -24,6 +24,7 @@ from app.service.binio import (
     write_ftp_bin_image,
     write_ftp_np_image,
 )
+from core.multi_processing.parallel import parallel_process
 from core.raster import RasterImage
 from log import logger
 from utils.cfar import CFAR2D, CFARParams
@@ -309,7 +310,6 @@ async def async_main():
                         msg = "Waiting for task id = {}".format(t.task_id_ref)
                         await _update_task(msg)
                         continue
-                    pass
 
                 input_param_dict = parse_param_dict(t.task_param)
                 if "input_file" not in input_param_dict:
@@ -360,7 +360,9 @@ async def async_main():
                         if gray_im.shape[-1] == 3:
                             gray_im = cv2.cvtColor(gray_im, cv2.COLOR_BGR2GRAY)
                         feature_image = mask2image(gray_im)
-                        top_detections = cfar_detector.get_top_detections(feature_image)
+                        top_detections = cfar_detector.get_top_detections(
+                            feature_image, stride=4
+                        )
                         mask_img = np.zeros_like(feature_image)
 
                         for row, col, value in top_detections:
@@ -382,9 +384,8 @@ async def async_main():
 
                                 image_filter = image_filter != 0
                                 mask_img = mask_img * image_filter
-                            except Exception as e:
+                            except:
                                 extra_mesg += f". Reading mask filter failed at {filter_image_path}"
-                                pass
 
                         sized_mask_img = cv2.resize(
                             mask_img, feature_image.shape[:2][::-1]
@@ -404,30 +405,46 @@ async def async_main():
                         ship_lat_lon_xy = raster_im.process_coordinates_parallel(
                             ship_xy
                         )
+
                         ship_lat_lon_xyxyxyxy = np.array(ship_lat_lon_xy).reshape(-1, 8)
 
-                        ship_lat_lon_wh = np.array(
-                            [
-                                [
-                                    latlong2meter(
-                                        row[i + 1],
-                                        row[i],
-                                        row[i + 3],
-                                        row[i + 2],
-                                    )
-                                    for i in range(0, 3, 2)
-                                ]
-                                for row in ship_lat_lon_xyxyxyxy
-                            ]
+                        # ship_lat_lon_wh = np.array(
+                        #     [
+                        #         [
+                        #             latlong2meter(
+                        #                 row[i + 1],
+                        #                 row[i],
+                        #                 row[i + 3],
+                        #                 row[i + 2],
+                        #             )
+                        #             for i in range(0, 3, 2)
+                        #         ]
+                        #         for row in ship_lat_lon_xyxyxyxy
+                        #     ]
+                        # )
+
+                        ship_lat_lon_wh = parallel_process()(latlong2meter)(
+                            np.concatenate(
+                                (
+                                    ship_lat_lon_xyxyxyxy[..., [1, 0, 3, 2]],
+                                    ship_lat_lon_xyxyxyxy[..., [3, 2, 5, 4]],
+                                ),
+                                axis=-1,
+                            ).reshape(-1, 4)
                         )
+
+                        ship_lat_lon_wh = np.array(ship_lat_lon_wh).reshape(-1, 2)
+                        ship_lat_lon_wh = np.sort(ship_lat_lon_wh, axis=-1)
 
                         # ship_center_lat_lon = [
                         #     raster_im.pixel_to_coords(*rbbox[0])
                         #     for rbbox in ship_rbboxes
                         # ]
+
                         ship_center_lat_lon = raster_im.process_coordinates_parallel(
                             [rbbox[0] for rbbox in ship_rbboxes]
                         )
+
                         ship_coords = np.array(
                             [
                                 [center[0], center[1], wh[0], wh[1], rbbox[-1]]

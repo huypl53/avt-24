@@ -1,9 +1,12 @@
-from dataclasses import dataclass
+import warnings
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
 from pydantic import BaseModel
 from tqdm import tqdm
+
+from core.multi_processing.parallel import ParallelProcessor
 
 
 # @dataclass
@@ -17,9 +20,12 @@ class CFARParams(BaseModel):
     min_training_cells: Optional[int] = 1  # Minimum number of training cells required
 
 
-class CFAR2D:
-    def __init__(self, params: CFARParams):
+class CFAR2D(ParallelProcessor):
+    """2D Constant False Alarm Rate (CFAR) detector for signal processing."""
+
+    def __init__(self, params: CFARParams, *args, **kwargs):
         self.params = params
+        super().__init__(*args, **kwargs)
 
     def _get_training_cells(
         self, matrix: np.ndarray, center_row: int, center_col: int
@@ -52,56 +58,116 @@ class CFAR2D:
 
         return window[guard_mask]
 
-    def apply(
-        self, matrix: np.ndarray, stride: int = 1
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def _process_chunk(self, args) -> Tuple[np.ndarray, np.ndarray, slice]:
         """
-        Apply CFAR detection to the input matrix with strided processing
-        Args:
-            matrix: Input matrix
-            stride: Step size for processing (default=1 for full processing)
-        Returns:
-            - threshold_matrix: Matrix of calculated thresholds
-            - detections: Binary matrix indicating detections
+        Process a chunk of rows
         """
-        rows, cols = matrix.shape
-        threshold_matrix = np.zeros_like(matrix, dtype=float)
-        detections = np.zeros_like(matrix, dtype=bool)
+        matrix, row_slice, stride = args
+        rows = row_slice.stop - row_slice.start
+        cols = matrix.shape[1]
 
-        # Add padding to handle edge cases
+        chunk_threshold = np.zeros((rows, cols), dtype=float)
+        chunk_detections = np.zeros((rows, cols), dtype=bool)
+
         tr, tc = self.params.training_cells
-        padded_matrix = np.pad(matrix, ((tr, tr), (tc, tc)), mode="reflect")
 
-        # Process with stride
-
-        for i in tqdm(range(0, rows, stride), leave=False, desc="rows"):
-            for j in tqdm(range(0, cols, stride), leave=False, desc="cols"):
-                # Get training cells
+        for i in range(0, rows, stride):
+            for j in range(0, cols, stride):
                 training_cells = self._get_training_cells(
-                    padded_matrix,
-                    i + tr,
+                    matrix,
+                    i + row_slice.start + tr,
                     j + tc,
                 )
 
                 if len(training_cells) >= self.params.min_training_cells:
-                    # Calculate threshold using mean and scaling factor
                     threshold = np.mean(training_cells) * self.params.scaling_factor
 
-                    # Apply threshold to the entire stride window
                     end_i = min(i + stride, rows)
                     end_j = min(j + stride, cols)
-                    threshold_matrix[i:end_i, j:end_j] = threshold
-                    detections[i:end_i, j:end_j] = matrix[i:end_i, j:end_j] > threshold
+                    chunk_threshold[i:end_i, j:end_j] = threshold
+                    chunk_detections[i:end_i, j:end_j] = (
+                        matrix[
+                            i + row_slice.start : i + row_slice.start + stride,
+                            j : j + stride,
+                        ]
+                        > threshold
+                    )
+
+        return chunk_threshold, chunk_detections, row_slice
+
+    def apply(
+        self, matrix: np.ndarray, stride: int = 1, n_processes: Optional[int] = None
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Apply CFAR detection using ProcessPoolExecutor
+        Args:
+            matrix: Input matrix
+            stride: Step size for processing (default=1)
+            n_processes: Number of processes to use (defaults to self.max_workers)
+        """
+        tr, tc = self.params.training_cells
+        max_training_size = max(tr, tc)
+
+        # Validate and adjust stride if necessary
+        if stride > max_training_size:
+            original_stride = stride
+            stride = max_training_size
+            warnings.warn(
+                f"Stride ({original_stride}) is larger than training cell size ({max_training_size}). "
+                f"Adjusting stride to {stride} to avoid missing detections."
+            )
+
+        n_processes = n_processes or self.max_workers
+        rows, cols = matrix.shape
+
+        # Add padding to handle edge cases
+        padded_matrix = np.pad(matrix, ((tr, tr), (tc, tc)), mode="reflect")
+
+        # Create smaller chunks to reduce memory usage
+        chunk_size = min(1000, rows // n_processes)  # Limit chunk size
+        threshold_matrix = np.zeros_like(matrix, dtype=float)
+        detections = np.zeros_like(matrix, dtype=bool)
+
+        with ProcessPoolExecutor(max_workers=n_processes) as executor:
+            # Process chunks in batches to control memory usage
+            for start in tqdm(
+                range(0, rows, chunk_size * n_processes), desc="Processing batches"
+            ):
+                futures = {}
+
+                # Submit a batch of chunks
+                for i in range(
+                    start, min(start + chunk_size * n_processes, rows), chunk_size
+                ):
+                    row_slice = slice(i, min(i + chunk_size, rows))
+                    # Extract only the needed portion of padded_matrix
+                    chunk_data = padded_matrix[
+                        i : i + chunk_size + 2 * tr, :
+                    ]  # Include padding
+                    future = executor.submit(
+                        self._process_chunk, (chunk_data, row_slice, stride)
+                    )
+                    futures[future] = row_slice
+
+                # Process completed futures for this batch
+                for future in as_completed(futures):
+                    row_slice = futures[future]
+                    chunk_threshold, chunk_detections, _ = future.result()
+                    threshold_matrix[row_slice] = chunk_threshold
+                    detections[row_slice] = chunk_detections
 
         return threshold_matrix, detections
 
     def get_top_detections(
-        self, matrix: np.ndarray, n_top: int = None, min_threshold: float = None
+        self,
+        matrix: np.ndarray,
+        n_top: int = None,
+        min_threshold: float = None,
+        stride=2,
     ) -> List[Tuple[int, int, float]]:
         """
         Get top N detections sorted by value
         """
-        stride = min(matrix.shape[:2]) // 32
         _, detections = self.apply(matrix, stride=stride)
 
         # Get all detection coordinates and values

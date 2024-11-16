@@ -84,20 +84,14 @@ def mask2rbboxes(mask_image):
         mask_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
 
-    rotated_bboxes = []
+    boxes = []
 
     # Iterate through the contours and get the rotated bounding boxes
     for contour in contours:
-        # Get the minimum area rectangle around the contour
         rect = cv2.minAreaRect(contour)
+        boxes.append(rect)
 
-        # Unpack the rectangle parameters
-        (x, y), (width, height), angle = rect
-
-        # Add the rotated bounding box to the list
-        rotated_bboxes.append(((x, y), (width, height), angle))
-
-    return rotated_bboxes
+    return boxes
 
 
 if __name__ == "__main__":

@@ -23,55 +23,40 @@ class ParallelProcessor(Generic[T, R]):
         Returns:
             List of processed results
         """
-        results = []
+        results = [None] * len(items)
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            # Create futures with their indices
             futures = {
                 executor.submit(process_func, item): i for i, item in enumerate(items)
             }
-            # Initialize results list with None values
-            results = [None] * len(items)
-            # Fill results in correct positions as they complete
             for future in as_completed(futures):
                 index = futures[future]
                 results[index] = future.result()
         return results
 
 
-def parallel_process(max_workers=None):
+def parallel_process(max_workers: int = multiprocessing.cpu_count()):
     """
-    A decorator for parallel processing of iterables.
+    Decorator for parallel processing of iterables.
 
-    Parameters:
-    max_workers (int, optional): Maximum number of worker processes.
-                               Defaults to number of CPU cores.
+    Args:
+        max_workers: Maximum number of worker processes to use
 
     Returns:
-    function: Decorated function that processes items in parallel
+        Decorated function that processes items in parallel
     """
-    if max_workers is None:
-        max_workers = multiprocessing.cpu_count()
 
-    def decorator(func):
-        @wraps(func)
-        def wrapper(items, *args, **kwargs):
-            if not items:
-                return []
-
-            results = []
+    def decorator(func: Callable[[T], R]):
+        def wrapper(items: List[T], *args, **kwargs) -> List[R]:
+            results = [None] * len(items)
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
-                # Create futures with their indices
                 futures = {
                     executor.submit(func, item, *args, **kwargs): i
                     for i, item in enumerate(items)
                 }
-                # Initialize results list with None values
-                results = [None] * len(items)
-                # Fill results in correct positions as they complete
                 for future in as_completed(futures):
                     index = futures[future]
                     results[index] = future.result()
-                return results
+            return results
 
         return wrapper
 
