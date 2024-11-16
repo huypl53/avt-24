@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from pydantic import BaseModel
+
 from utils.cfar import CFARParams
 
 
@@ -66,6 +67,11 @@ class ImageType(Enum):
 
 
 class DetectionParam(IOParam):
+    image_type: Optional[ImageType] = None
+    mask_file: Optional[str] = None
+
+
+class ShipEoDetectionParam(DetectionParam):
     algorithm: str
     config: str
     checkpoint: str
@@ -76,7 +82,6 @@ class DetectionParam(IOParam):
     patch_steps: List[int]
     img_ratios: List[float]
     merge_iou_thr: float
-    image_type: Optional[str] = None
 
     # DetectionTaskType.change
     consecutive_thr: Optional[float] = None  #
@@ -85,7 +90,7 @@ class DetectionParam(IOParam):
     iou: Optional[float] = None
 
 
-class DetectionInputParam(DetectionParam):
+class DetectionInputParam(ShipEoDetectionParam):
     pass
 
     # 0: "plane",
@@ -144,9 +149,7 @@ class ExtractedObject(BaseModel):
 
 class ChangeDetectionParam(IOParam):
     mask_file: Optional[str] = None
-    pass
 
 
-class ShipSarDetectionParam(IOParam):
+class ShipSarDetectionParam(DetectionParam):
     cfar: Optional[CFARParams] = dict()
-    pass

@@ -59,12 +59,10 @@ class CFAR2D(ParallelProcessor):
         return window[guard_mask]
 
     def _process_chunk(self, args) -> Tuple[np.ndarray, np.ndarray, slice]:
-        """
-        Process a chunk of rows
-        """
+        """Process a chunk of rows"""
         matrix, row_slice, stride = args
         rows = row_slice.stop - row_slice.start
-        cols = matrix.shape[1]
+        cols = matrix.shape[1] - 2 * self.params.training_cells[1]  # Adjust for padding
 
         chunk_threshold = np.zeros((rows, cols), dtype=float)
         chunk_detections = np.zeros((rows, cols), dtype=bool)
@@ -75,8 +73,8 @@ class CFAR2D(ParallelProcessor):
             for j in range(0, cols, stride):
                 training_cells = self._get_training_cells(
                     matrix,
-                    i + row_slice.start + tr,
-                    j + tc,
+                    i + tr,  # Adjust for padding offset
+                    j + tc,  # Adjust for padding offset
                 )
 
                 if len(training_cells) >= self.params.min_training_cells:
@@ -84,14 +82,26 @@ class CFAR2D(ParallelProcessor):
 
                     end_i = min(i + stride, rows)
                     end_j = min(j + stride, cols)
-                    chunk_threshold[i:end_i, j:end_j] = threshold
-                    chunk_detections[i:end_i, j:end_j] = (
-                        matrix[
-                            i + row_slice.start : i + row_slice.start + stride,
-                            j : j + stride,
+                    try:
+                        chunk_threshold[i:end_i, j:end_j] = threshold
+                        left_slice = chunk_detections[i:end_i, j:end_j]
+                        right_slice = matrix[
+                            i + tr : i + tr + (end_i - i),
+                            j + tc : j + tc + (end_j - j),
                         ]
-                        > threshold
-                    )
+                        print(
+                            f"Left shape: {left_slice.shape}, Right shape: {right_slice.shape}"
+                        )
+                        chunk_detections[i:end_i, j:end_j] = right_slice > threshold
+                    except Exception as e:
+                        print(
+                            f"Left shape: {left_slice.shape}, Right shape: {right_slice.shape}"
+                        )
+
+                        print(f"Error processing chunk: {e}")
+                        print(
+                            f"i={i}, end_i={end_i}, j={j}, end_j={end_j}, tr={tr}, tc={tc}"
+                        )
 
         return chunk_threshold, chunk_detections, row_slice
 

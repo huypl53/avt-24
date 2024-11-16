@@ -1,6 +1,3 @@
-from app.db.connector import get_db
-from app.schema import DetectionParam, DetectionTaskType
-
 import multiprocessing.synchronize
 from typing import Dict, List, Tuple
 
@@ -12,16 +9,12 @@ from app.db.connector import AsyncSessionFactory, get_db
 
 # from app.db.spawn import DbProcess
 from app.model.task import TaskMd
-from app.schema import (
-    DetectionInputParam,
-    DetectionParam,
-    DetectionTaskType,
-)
+from app.schema import DetectionInputParam, DetectionTaskType, ShipEoDetectionParam
 
 
 class Worker:
     def __init__(
-        self, task_type: DetectionTaskType, pre_param_conf: DetectionParam
+        self, task_type: DetectionTaskType, pre_param_conf: ShipEoDetectionParam
     ) -> None:
         self._task_type = task_type
         self._pre_param_conf = pre_param_conf

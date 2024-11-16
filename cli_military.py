@@ -10,7 +10,6 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
-from core.line import detect_runway
 import torch
 from dictdiffer import diff
 from mmdet.apis import init_detector
@@ -23,10 +22,10 @@ from app.db.connector import get_db
 from app.model.task import TaskMd
 from app.schema import (
     DetectionInputParam,
-    DetectionParam,
     DetectionTaskType,
     ExtractedObject,
     ObjectCategory,
+    ShipEoDetectionParam,
 )
 from app.service.binio import (
     ftpTransfer,
@@ -35,6 +34,7 @@ from app.service.binio import (
     write_text_file,
 )
 from core.box_record import BoxDetect, BoxRecord
+from core.line import detect_runway
 from core.ship.classifier import classify_ship
 from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
@@ -148,17 +148,17 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     return tasks
 
 
-def load_task_config(task_type: DetectionTaskType) -> DetectionParam | None:
+def load_task_config(task_type: DetectionTaskType) -> ShipEoDetectionParam | None:
     match task_type:
         case DetectionTaskType.SHIP:
             config = open("./config/ship.json", "r").read()
-            return DetectionParam.model_validate_json(config)
+            return ShipEoDetectionParam.model_validate_json(config)
         case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
-            return DetectionParam.model_validate_json(config)
+            return ShipEoDetectionParam.model_validate_json(config)
         case DetectionTaskType.MILITARY:
             config = open("./config/military.json", "r").read()
-            return DetectionParam.model_validate_json(config)
+            return ShipEoDetectionParam.model_validate_json(config)
         case _:
             return None
 
