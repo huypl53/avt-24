@@ -7,8 +7,8 @@ R = TypeVar("R")  # Result type
 
 
 class ParallelProcessor(Generic[T, R]):
-    def __init__(self, max_workers: int = None):
-        self.max_workers = max_workers or multiprocessing.cpu_count()
+    def __init__(self, max_workers: int = multiprocessing.cpu_count()):
+        self.max_workers = max_workers
 
     def process_parallel(
         self, items: List[T], process_func: Callable[[T], R]

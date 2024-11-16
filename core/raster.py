@@ -253,6 +253,20 @@ class RasterImage(ParallelProcessor[T, R]):
             return memfile.read()
 
     def process_coordinates_parallel(
+        self, keypoints: List[Tuple[int, int]]
+    ) -> List[Tuple[float, float]]:
+        """
+        Convert pixel coordinates to lat/lon coordinates in parallel
+
+        Args:
+            keypoints: List of (x, y) pixel coordinates
+
+        Returns:
+            List of (lat, lon) coordinates
+        """
+        return self.process_parallel(keypoints, self.pixel_to_coords)
+
+    def process_coordinates_list_parallel(
         self, keypoints: List[List[Tuple[int, int]]]
     ) -> List[List[Tuple[float, float]]]:
         """
