@@ -27,20 +27,16 @@ from app.service.binio import (
 from core.raster import RasterImage
 from log import logger
 from utils.cfar import CFAR2D, CFARParams
-from utils.processing import (
-    find_boundary_keypoints,
-    get_rotated_bbox_corners,
-    mask2rbboxes,
-)
+from utils.processing import get_rotated_bbox_corners, mask2rbboxes
 from utils.raster import latlong2meter
 from utils.transform import gen_fft_diff_mask, mask2image
 
 cfar_params = CFARParams(
-    guard_cells=(1, 1),  # Smaller guard cells due to matrix size
+    guard_cells=(3, 3),  # Smaller guard cells due to matrix size
     training_cells=(5, 5),  # Smaller training cells due to matrix size
     false_alarm_rate=1e-2,  # Higher false alarm rate
     scaling_factor=1.5,  # Lower scaling factor for more detections
-    min_training_cells=1,  # Minimum number of training cells required
+    min_training_cells=3,  # Minimum number of training cells required
 )
 
 
@@ -73,14 +69,6 @@ def stringify_dict_list(param: Dict):
 
 
 def filter_3d_array(array3d: np.ndarray, filter2d: np.ndarray) -> np.ndarray:
-    """Filter a 3D array using a 2D boolean mask array.
-
-    Args:
-        array3d: 3D input array to filter
-        filter2d: 2D boolean mask array
-    Returns:
-        Filtered 3D array
-    """
     output = np.array(
         [
             [bbox for bbox, mask in zip(class_boxes, bbox_masks) if mask]
@@ -98,16 +86,6 @@ def update_task_chronologically(
     start=2,
     step: int = 1,
 ):
-    """Update task status incrementally at regular intervals.
-
-    Args:
-        task_id: ID of the task to update
-        stop_event: Event to signal when updates should stop
-        task_type: Type of task being processed
-        session: Optional database session
-        start: Initial status value (default: 2)
-        step: Increment step size (default: 1)
-    """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
@@ -352,8 +330,6 @@ async def async_main():
                 t.task_param = input_params.model_dump_json(exclude_none=True)
                 await _update_task()
 
-                t.task_stat = 1
-                t.task_message = "\n".join(["Successfully", extra_mesg])
                 try:
                     task_params = ShipSarDetectionParam.model_validate_json(
                         t.task_param
@@ -409,6 +385,7 @@ async def async_main():
                             except Exception as e:
                                 extra_mesg += f". Reading mask filter failed at {filter_image_path}"
                                 pass
+
                         sized_mask_img = cv2.resize(
                             mask_img, feature_image.shape[:2][::-1]
                         )
@@ -424,9 +401,9 @@ async def async_main():
                         ]
 
                         ship_xy = np.array(ship_xyxyxyxy).reshape(-1, 2)
-                        ship_lat_lon_xy = [
-                            raster_im.pixel_to_coords(xy[0], xy[1]) for xy in ship_xy
-                        ]
+                        ship_lat_lon_xy = raster_im.process_coordinates_parallel(
+                            ship_xy
+                        )
                         ship_lat_lon_xyxyxyxy = np.array(ship_lat_lon_xy).reshape(-1, 8)
 
                         ship_lat_lon_wh = np.array(
@@ -444,10 +421,13 @@ async def async_main():
                             ]
                         )
 
-                        ship_center_lat_lon = [
-                            raster_im.pixel_to_coords(*rbbox[0])
-                            for rbbox in ship_rbboxes
-                        ]
+                        # ship_center_lat_lon = [
+                        #     raster_im.pixel_to_coords(*rbbox[0])
+                        #     for rbbox in ship_rbboxes
+                        # ]
+                        ship_center_lat_lon = raster_im.process_coordinates_parallel(
+                            [rbbox[0] for rbbox in ship_rbboxes]
+                        )
                         ship_coords = np.array(
                             [
                                 [center[0], center[1], wh[0], wh[1], rbbox[-1]]
@@ -479,6 +459,8 @@ async def async_main():
                     extra_mesg += f' Read image failed at: {";".join(failed_images)}'
                 t.task_output = json.dumps(images_lat_lon_keypoints)
 
+                t.task_stat = 1
+                t.task_message = "\n".join(["Successfully", extra_mesg])
                 logger.info(f"Process task id = {t.id} successfully")
                 stop_update_task_continuously()
                 await asyncio.sleep(2)
