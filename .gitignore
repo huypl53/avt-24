@@ -168,3 +168,5 @@ demo_box_record.json
 core/demo_box_record.json
 
 sample/
+*.pth
+tmp/*
