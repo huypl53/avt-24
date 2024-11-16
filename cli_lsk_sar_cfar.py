@@ -421,10 +421,13 @@ async def async_main():
                             ]
                         )
 
-                        ship_center_lat_lon = [
-                            raster_im.pixel_to_coords(*rbbox[0])
-                            for rbbox in ship_rbboxes
-                        ]
+                        # ship_center_lat_lon = [
+                        #     raster_im.pixel_to_coords(*rbbox[0])
+                        #     for rbbox in ship_rbboxes
+                        # ]
+                        ship_center_lat_lon = raster_im.process_coordinates_parallel(
+                            [rbbox[0] for rbbox in ship_rbboxes]
+                        )
                         ship_coords = np.array(
                             [
                                 [center[0], center[1], wh[0], wh[1], rbbox[-1]]

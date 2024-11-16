@@ -29,3 +29,30 @@ class ParallelProcessor(Generic[T, R]):
             for future in as_completed(futures):
                 results.append(future.result())
         return results
+
+
+def parallel_process(max_workers: int = multiprocessing.cpu_count()):
+    """
+    Decorator for parallel processing of iterables.
+
+    Args:
+        max_workers: Maximum number of worker processes to use
+
+    Returns:
+        Decorated function that processes items in parallel
+    """
+
+    def decorator(func: Callable[[T], R]):
+        def wrapper(items: List[T], *args, **kwargs) -> List[R]:
+            results = []
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(func, item, *args, **kwargs) for item in items
+                ]
+                for future in as_completed(futures):
+                    results.append(future.result())
+            return results
+
+        return wrapper
+
+    return decorator
