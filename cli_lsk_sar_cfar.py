@@ -152,7 +152,7 @@ async def async_main():
     bname: str = ""
     task_type = DetectionTaskType.SHIP
 
-    config = open("./config/ship_sar_cfar.json", "r").read()
+    config = open("./config/ship_sar_cfar.json", "r", encoding="utf-8").read()
     pre_param_conf = ShipSarDetectionParam.model_validate_json(config)
     pre_param_conf = pre_param_conf.model_copy(
         update=dict(cfar=cfar_params.model_dump())
@@ -207,9 +207,8 @@ async def async_main():
 
             if new_params_cnt:
                 logger.info(
-                    f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}"
+                    "new_params_cnt: %s, task: %s", new_params_cnt, input_param_dict
                 )
-                # pre_conf.update(param_dict)
                 pre_param_conf = pre_param_conf.model_copy(
                     update=input_param_no_file_dict
                 )
@@ -220,7 +219,8 @@ async def async_main():
                     "input_file": input_param_dict["input_file"],
                 }
             )
-            cfar_detector = CFAR2D(input_params.cfar)
+            if input_params.cfar:
+                cfar_detector = CFAR2D(input_params.cfar)
 
         async def _process_image(
             input_file: str, return_bin: bool = False
@@ -441,8 +441,11 @@ async def async_main():
                         #     for rbbox in ship_rbboxes
                         # ]
 
-                        ship_center_lat_lon = raster_im.process_coordinates_parallel(
+                        ship_center_coords = np.array(
                             [rbbox[0] for rbbox in ship_rbboxes]
+                        )
+                        ship_center_lat_lon = raster_im.process_coordinates_parallel(
+                            ship_center_coords
                         )
 
                         ship_coords = np.array(

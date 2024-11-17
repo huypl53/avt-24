@@ -1,13 +1,13 @@
 import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from io import BytesIO
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, TypeVar, Union
+from typing import List, Tuple, TypeVar, Union
 
 import numpy as np
 import rasterio
 from rasterio.errors import RasterioError
-from rasterio.warp import transform
-from rasterio.windows import Window
 
 from core.multi_processing.parallel import ParallelProcessor
 
@@ -22,7 +22,21 @@ T = TypeVar("T")
 R = TypeVar("R")
 
 
-class RasterImage(ParallelProcessor[T, R]):
+def _convert_coordinates_chunk(
+    transform_data: dict, coords: List[Tuple[int, int]]
+) -> List[Tuple[float, float]]:
+    """Static method to convert coordinates using just the transform data"""
+    from rasterio.transform import xy
+
+    results = []
+    transform = transform_data["transform"]
+    for x, y in coords:
+        lon, lat = xy(transform, y, x)
+        results.append((lat, lon))
+    return results
+
+
+class RasterImage(ParallelProcessor[Tuple[int, int], Tuple[float, float]]):
     def __init__(self, source: Union[str, Path, bytes], max_workers: int = None):
         """
         Initialize RasterImage with either a file path or bytes data
@@ -252,19 +266,57 @@ class RasterImage(ParallelProcessor[T, R]):
                 dst.write(self._numpy_data.transpose(2, 0, 1))
             return memfile.read()
 
+    def _convert_single_coordinate(self, coord: Tuple[int, int]) -> Tuple[float, float]:
+        """
+        Convert a single pixel coordinate to lat/lon coordinate
+
+        Args:
+            coord: (x, y) pixel coordinate
+
+        Returns:
+            (lat, lon) coordinate
+        """
+        return self.pixel_to_coords(*coord)
+
+    def _get_transform_data(self):
+        """Get the essential transformation data needed for coordinate conversion"""
+        return {
+            "transform": self._transform,
+            "crs": self._crs,
+        }
+
     def process_coordinates_parallel(
-        self, keypoints: List[Tuple[int, int]]
+        self, keypoints: List[Tuple[int, int]], batch_size: int = 10000
     ) -> List[Tuple[float, float]]:
         """
-        Convert pixel coordinates to lat/lon coordinates in parallel
+        Convert pixel coordinates to lat/lon coordinates in parallel, processing in batches
 
         Args:
             keypoints: List of (x, y) pixel coordinates
+            batch_size: Number of keypoints to process in each batch
 
         Returns:
             List of (lat, lon) coordinates
         """
-        return self.process_parallel(keypoints, self.pixel_to_coords)
+
+        # Extract just the necessary transformation data
+        transform_data = self._get_transform_data()
+
+        # Create a partial function with the transform data
+        convert_func = partial(_convert_coordinates_chunk, transform_data)
+
+        # Split keypoints into batches
+        batches = [
+            keypoints[i : i + batch_size] for i in range(0, len(keypoints), batch_size)
+        ]
+
+        # Process batches in parallel
+        results = []
+        with ProcessPoolExecutor() as executor:
+            for batch_results in executor.map(convert_func, batches):
+                results.extend(batch_results)
+
+        return results
 
     def process_coordinates_list_parallel(
         self, keypoints: List[List[Tuple[int, int]]]

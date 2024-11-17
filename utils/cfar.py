@@ -89,9 +89,6 @@ class CFAR2D(ParallelProcessor):
                             i + tr : i + tr + (end_i - i),
                             j + tc : j + tc + (end_j - j),
                         ]
-                        print(
-                            f"Left shape: {left_slice.shape}, Right shape: {right_slice.shape}"
-                        )
                         chunk_detections[i:end_i, j:end_j] = right_slice > threshold
                     except Exception as e:
                         print(
