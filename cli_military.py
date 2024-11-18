@@ -25,7 +25,7 @@ from app.schema import (
     DetectionTaskType,
     ExtractedObject,
     ObjectCategory,
-    ShipEoDetectionParam,
+    ShipDetectionParam,
 )
 from app.service.binio import (
     ftpTransfer,
@@ -148,17 +148,17 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     return tasks
 
 
-def load_task_config(task_type: DetectionTaskType) -> ShipEoDetectionParam | None:
+def load_task_config(task_type: DetectionTaskType) -> ShipDetectionParam | None:
     match task_type:
         case DetectionTaskType.SHIP:
             config = open("./config/ship.json", "r").read()
-            return ShipEoDetectionParam.model_validate_json(config)
+            return ShipDetectionParam.model_validate_json(config)
         case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
-            return ShipEoDetectionParam.model_validate_json(config)
+            return ShipDetectionParam.model_validate_json(config)
         case DetectionTaskType.MILITARY:
             config = open("./config/military.json", "r").read()
-            return ShipEoDetectionParam.model_validate_json(config)
+            return ShipDetectionParam.model_validate_json(config)
         case _:
             return None
 

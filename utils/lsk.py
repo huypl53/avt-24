@@ -205,15 +205,23 @@ def downsample_image(img: np.ndarray, rate_x: float, rate_y: float):
     )
 
 
-def xywh2xyxyxyxy(bbox):
-    """Convert bbox coordinates from (cx, cy, w, h) to (x1, y1, x2, y2).
+def xyxy2xywh(bboxes):
+    """Convert ``xyxy`` style bounding boxes to ``xywh`` style.
 
     Args:
-        bbox (Tensor): Shape (n, 4) for bboxes.
+        bboxes (numpy.ndarray): The bounding boxes, shape (N, 4), in
+            ``x1, y1, x2, y2`` order.
 
     Returns:
-        Tensor: Converted bboxes.
+        numpy.ndarray: The converted bounding boxes, in ``xc, yc, w, h`` order,
+            shape (N, 4).
     """
-    cx, cy, w, h = bbox.split((1, 1, 1, 1), dim=-1)
-    bbox_new = [(cx - 0.5 * w), (cy - 0.5 * h), (cx + 0.5 * w), (cy + 0.5 * h)]
-    return torch.cat(bbox_new, dim=-1)
+
+    return np.array(
+        [
+            (bboxes[:, 0] + bboxes[:, 2]) / 2,  # xc: center of x
+            (bboxes[:, 1] + bboxes[:, 3]) / 2,  # yc: center of y
+            bboxes[:, 2] - bboxes[:, 0],  # w: width
+            bboxes[:, 3] - bboxes[:, 1],  # h: height
+        ]
+    ).T

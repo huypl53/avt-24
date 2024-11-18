@@ -71,7 +71,7 @@ class DetectionParam(IOParam):
     mask_file: Optional[str] = None
 
 
-class ShipEoDetectionParam(DetectionParam):
+class ShipDetectionParam(DetectionParam):
     algorithm: str
     config: str
     checkpoint: str
@@ -90,7 +90,7 @@ class ShipEoDetectionParam(DetectionParam):
     iou: Optional[float] = None
 
 
-class DetectionInputParam(ShipEoDetectionParam):
+class DetectionInputParam(ShipDetectionParam):
     pass
 
     # 0: "plane",
@@ -151,5 +151,5 @@ class ChangeDetectionParam(IOParam):
     mask_file: Optional[str] = None
 
 
-class ShipSarDetectionParam(DetectionParam):
+class ShipCfarDetectionParam(DetectionParam):
     cfar: Optional[CFARParams] = dict()

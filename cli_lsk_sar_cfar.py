@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.connector import get_db
 from app.model.task import TaskMd
-from app.schema import DetectionTaskType, ExtractedObject, ShipSarDetectionParam
+from app.schema import DetectionTaskType, ExtractedObject, ShipCfarDetectionParam
 from app.service.binio import (
     read_ftp_bin_image,
     read_ftp_np_image,
@@ -153,7 +153,7 @@ async def async_main():
     task_type = DetectionTaskType.SHIP
 
     config = open("./config/ship_sar_cfar.json", "r", encoding="utf-8").read()
-    pre_param_conf = ShipSarDetectionParam.model_validate_json(config)
+    pre_param_conf = ShipCfarDetectionParam.model_validate_json(config)
     pre_param_conf = pre_param_conf.model_copy(
         update=dict(cfar=cfar_params.model_dump())
     )
@@ -161,7 +161,7 @@ async def async_main():
     cfar_detector = CFAR2D(cfar_params)
     while True:
 
-        input_params: ShipSarDetectionParam = ShipSarDetectionParam(
+        input_params: ShipCfarDetectionParam = ShipCfarDetectionParam(
             **pre_param_conf.model_dump()
         )
         extra_mesg = ""
@@ -212,7 +212,7 @@ async def async_main():
                 pre_param_conf = pre_param_conf.model_copy(
                     update=input_param_no_file_dict
                 )
-            input_params = ShipSarDetectionParam.model_validate(
+            input_params = ShipCfarDetectionParam.model_validate(
                 {
                     **pre_param_conf.model_dump(),
                     **input_param_no_file_dict,
@@ -331,7 +331,7 @@ async def async_main():
                 await _update_task()
 
                 try:
-                    task_params = ShipSarDetectionParam.model_validate_json(
+                    task_params = ShipCfarDetectionParam.model_validate_json(
                         t.task_param
                     )
                 except:

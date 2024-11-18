@@ -26,7 +26,7 @@ from app.schema import (
     DetectionTaskType,
     ExtractedObject,
     ObjectCategory,
-    ShipEoDetectionParam,
+    ShipDetectionParam,
 )
 from app.service.binio import (
     ftpTransfer,
@@ -155,17 +155,17 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     return tasks
 
 
-def load_task_config(task_type: DetectionTaskType) -> ShipEoDetectionParam | None:
+def load_task_config(task_type: DetectionTaskType) -> ShipDetectionParam | None:
     match task_type:
         case DetectionTaskType.SHIP:
             config = open("./config/ship.json", "r").read()
-            return ShipEoDetectionParam.model_validate_json(config)
+            return ShipDetectionParam.model_validate_json(config)
         case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
-            return ShipEoDetectionParam.model_validate_json(config)
+            return ShipDetectionParam.model_validate_json(config)
         case DetectionTaskType.MILITARY:
             config = open("./config/military.json", "r").read()
-            return ShipEoDetectionParam.model_validate_json(config)
+            return ShipDetectionParam.model_validate_json(config)
         case _:
             return None
 
@@ -403,8 +403,8 @@ async def async_main():
                         .where(TaskMd.task_stat == 1)
                         .order_by(TaskMd.task_stat.desc())
                     )
-                    tasks = await query_tasks_by_stmt(stmt_ref_tasks, session)
-                    if len(tasks) == 0:
+                    sub_tasks = await query_tasks_by_stmt(stmt_ref_tasks, session)
+                    if len(sub_tasks) == 0:
                         msg = "Waiting for task id = {}".format(t.task_id_ref)
                         await _update_task(msg)
                         continue
@@ -450,7 +450,9 @@ async def async_main():
                         for class_id, class_rbboxes in enumerate(classes_results):
                             detection_history[im_th].append([])
                             # output = result[:, result[..., -1] > input_params.score_thr]
-                            output = np.array(class_rbboxes)
+                            output = np.array(
+                                class_rbboxes
+                            )  # [[cx, cy, w, h, angle, score]] all in pixel, angle in radian
                             output = output[output[..., -1] > input_params.score_thr]
 
                             if not len(output):
