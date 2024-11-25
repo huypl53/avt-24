@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List
 
 import cv2
@@ -72,12 +73,14 @@ def get_rotated_bbox_corners(bbox):
 def mask2rbboxes(mask_image):
     """
     Detect rotated bounding boxes of mask areas in the given binary mask image.
+    Returns angles in clockwise direction starting from North (0°).
 
     Parameters:
     mask_image (numpy.ndarray): Binary mask image with pixel values of 0 or 255.
 
     Returns:
     list: List of rotated bounding box coordinates in the format ((x, y), (width, height), angle).
+            Angle is in degrees, clockwise from North (0°).
     """
     # Find contours in the mask image
     contours, _ = cv2.findContours(
@@ -86,10 +89,23 @@ def mask2rbboxes(mask_image):
 
     boxes = []
 
-    # Iterate through the contours and get the rotated bounding boxes
     for contour in contours:
         rect = cv2.minAreaRect(contour)
-        boxes.append(rect)
+        (center, (width, height), angle) = rect
+
+        # Convert OpenCV angle to clockwise from North
+        # OpenCV returns [-90, 0) for width > height
+        # and returns [0, 90) for width < height
+        if width < height:
+            angle = 90 - angle
+        else:
+            angle = -angle
+
+        # Make angle clockwise from North (0°)
+        angle = angle % 360
+        angle = (90 - angle) % 360
+
+        boxes.append((center, (width, height), angle))
 
     return boxes
 

@@ -581,10 +581,13 @@ async def async_main():
                     boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(
                         np.uint8
                     )
-                    # cv2.imwrite(f'{t.id}-runway-mask.png', boundary_mask_img)
+                    cv2.imwrite(f"./tmp/{t.id}-runway-mask.png", boundary_mask_img)
                     # keypoint_list = find_boundary_keypoints(boundary_mask_img)
 
                     runway_rbboxes = mask2rbboxes(boundary_mask_img)
+                    runway_rbboxes = [
+                        bbox for bbox in runway_rbboxes if max(bbox[1]) > 300
+                    ]
                     logger.info(f"task id {t.id} has {len(runway_rbboxes)} runways")
                     runway_xyxyxyxy = [
                         get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
