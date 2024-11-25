@@ -388,7 +388,6 @@ async def async_main():
         )
         tasks = await query_tasks_by_stmt(stmt_task, session)
 
-        print("Detect ship")
         try:
             for task_i, t in enumerate(tasks):
                 current_task = t
@@ -570,19 +569,23 @@ async def async_main():
                     raster_image = RasterImage(tmp_im_path)
                     raster_image.replace_image_data(im)
 
-                    slicer = SlidingWindowInference(
-                        inference_fn=infer_image_runway,
-                        window_size=(1024, 1024),
-                        smoothier=True,
-                    )
+                    # slicer = SlidingWindowInference(
+                    #     inference_fn=infer_image_runway,
+                    #     window_size=(1024, 1024),
+                    #     smoothier=True,
+                    # )
 
-                    runway_mask = slicer(im)
+                    # runway_mask = slicer(im)
+                    runway_mask = infer_image_runway(im)
+
                     boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(
                         np.uint8
                     )
+                    # cv2.imwrite(f'{t.id}-runway-mask.png', boundary_mask_img)
                     # keypoint_list = find_boundary_keypoints(boundary_mask_img)
 
                     runway_rbboxes = mask2rbboxes(boundary_mask_img)
+                    logger.info(f"task id {t.id} has {len(runway_rbboxes)} runways")
                     runway_xyxyxyxy = [
                         get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
                     ]
@@ -629,11 +632,11 @@ async def async_main():
                             "image_id": image_id,
                             "runway": [
                                 ExtractedObject(
-                                    id=f"{im_th:03d}-duong_bay",
+                                    id=f"{im_th:03d}-{i:03d}-duong_bay",
                                     coords=coords,
                                     class_id="duong_bay",
                                 ).model_dump()
-                                for coords in runway_coords
+                                for i, coords in enumerate(runway_coords)
                             ],
                         }
                     )
@@ -691,4 +694,5 @@ async def async_main():
 
 
 if __name__ == "__main__":
+    print("Detect ship")
     asyncio.run(async_main())
