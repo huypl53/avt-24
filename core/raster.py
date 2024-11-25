@@ -8,6 +8,7 @@ from typing import List, Tuple, TypeVar, Union
 import numpy as np
 import rasterio
 from rasterio.errors import RasterioError
+from rasterio.warp import transform
 
 from core.multi_processing.parallel import ParallelProcessor
 
