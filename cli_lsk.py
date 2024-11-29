@@ -24,9 +24,9 @@ from app.model.task import TaskMd
 from app.schema import (
     DetectionInputParam,
     DetectionTaskType,
+    EODetectionParam,
     ExtractedObject,
     ObjectCategory,
-    ShipDetectionParam,
 )
 from app.service.binio import (
     ftpTransfer,
@@ -155,17 +155,17 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     return tasks
 
 
-def load_task_config(task_type: DetectionTaskType) -> ShipDetectionParam | None:
+def load_task_config(task_type: DetectionTaskType) -> EODetectionParam | None:
     match task_type:
         case DetectionTaskType.SHIP:
             config = open("./config/ship.json", "r").read()
-            return ShipDetectionParam.model_validate_json(config)
+            return EODetectionParam.model_validate_json(config)
         case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
-            return ShipDetectionParam.model_validate_json(config)
+            return EODetectionParam.model_validate_json(config)
         case DetectionTaskType.MILITARY:
             config = open("./config/military.json", "r").read()
-            return ShipDetectionParam.model_validate_json(config)
+            return EODetectionParam.model_validate_json(config)
         case _:
             return None
 
@@ -204,15 +204,6 @@ async def async_main():
         _i += 1
         if _i >= _num_task_types:
             _i = 0
-
-        if model_runway is None:
-            config_file = (
-                "/workspace/mmsegmentation/work_dirs/runway_config/runway_config.py"
-            )
-            checkpoint_file = (
-                "/workspace/mmsegmentation/work_dirs/runway_config/latest.pth"
-            )
-            model_runway = init_segmentor(config_file, checkpoint_file, device="cuda:0")
 
         def infer_image_runway(img) -> np.ndarray | None:
             nonlocal model_runway
@@ -255,7 +246,7 @@ async def async_main():
             update_process.start()
 
         def _update_param(input_param_dict: Dict):
-            nonlocal input_params, pre_param_conf, reload_model, model
+            nonlocal input_params, pre_param_conf, reload_model, model, model_runway
             if not pre_param_conf:
                 return
             input_param_no_file_dict = {
@@ -299,6 +290,21 @@ async def async_main():
                         input_params.checkpoint,
                         device=input_params.device,
                     )
+                    if model_runway is None:
+                        config_file = (
+                            "/workspace/avt-detection/eo/runway_seg_config.py"
+                            if not input_params.runway_config
+                            else input_params.runway_config
+                        )
+                        checkpoint_file = (
+                            "/workspace/avt-detection/eo/runway_seg_ckpt.pth"
+                            if not input_params.runway_ckpt
+                            else input_params.runway_ckpt
+                        )
+                        model_runway = init_segmentor(
+                            config_file, checkpoint_file, device="cuda:0"
+                        )
+
                     reload_model = False
                 except Exception as e:
                     clear_model(model)
@@ -577,6 +583,8 @@ async def async_main():
 
                     # runway_mask = slicer(im)
                     runway_mask = infer_image_runway(im)
+                    if runway_mask is None:
+                        continue
 
                     boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(
                         np.uint8

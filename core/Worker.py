@@ -9,12 +9,12 @@ from app.db.connector import AsyncSessionFactory, get_db
 
 # from app.db.spawn import DbProcess
 from app.model.task import TaskMd
-from app.schema import DetectionInputParam, DetectionTaskType, ShipDetectionParam
+from app.schema import DetectionInputParam, DetectionTaskType, EODetectionParam
 
 
 class Worker:
     def __init__(
-        self, task_type: DetectionTaskType, pre_param_conf: ShipDetectionParam
+        self, task_type: DetectionTaskType, pre_param_conf: EODetectionParam
     ) -> None:
         self._task_type = task_type
         self._pre_param_conf = pre_param_conf

@@ -1,7 +1,7 @@
 {
   "algorithm": "phat_hien_tau_sar",
-  "config": "/workspace/mmdetection/work_dirs/sar_det_config/sar_det_config.py",
-  "checkpoint": "/workspace/mmdetection/work_dirs/sar_det_config/latest.pth",
+  "config": "/workspace/avt-detection/sar/sar_det_config.py",
+  "checkpoint": "/workspace/avt-detection/sar/sar_det_ckpt.pth",
   "device": "cuda:0",
   "score_thr": 0.3,
   "patch_sizes": [2048],

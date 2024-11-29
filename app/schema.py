@@ -1,3 +1,4 @@
+import string
 from enum import Enum
 from typing import List, Optional
 
@@ -71,7 +72,7 @@ class DetectionParam(IOParam):
     mask_file: Optional[str] = None
 
 
-class ShipDetectionParam(DetectionParam):
+class EODetectionParam(DetectionParam):
     algorithm: str
     config: str
     checkpoint: str
@@ -89,8 +90,12 @@ class ShipDetectionParam(DetectionParam):
     rotation_threshold: Optional[float] = None
     iou: Optional[float] = None
 
+    # runway
+    runway_config: Optional[str] = None
+    runway_ckpt: Optional[str] = None
 
-class DetectionInputParam(ShipDetectionParam):
+
+class DetectionInputParam(EODetectionParam):
     pass
 
     # 0: "plane",

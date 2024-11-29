@@ -2,51 +2,24 @@
 # wget https://download.openmmlab.com/mmdetection/v2.0/faster_rcnn/faster_rcnn_r101_fpn_mstrain_3x_coco/faster_rcnn_r101_fpn_mstrain_3x_coco_20210524_110822-4d4d2ca8.pth
 
 
-# custom
 num_classes = 1
-classes = ("ship",)  # Only one class
-# dataset settings
+classes = ("ship",)
 dataset_type = "CocoDataset"
-data_root = "/workspace/data/custom-sar-ship/"
-load_from = "/workspace/avt-detection/faster_rcnn_r101_fpn_mstrain_3x_coco_20210524_110822-4d4d2ca8.pth"
+data_root = "/workspace/data/custom-sar-ship-fit/"
+load_from = None
 resume_from = None
-#
-
 checkpoint_config = dict(interval=1)
-# yapf:disable
-log_config = dict(
-    interval=50,
-    hooks=[
-        dict(type="TextLoggerHook"),
-        # dict(type='TensorboardLoggerHook')
-    ],
-)
-# yapf:enable
+log_config = dict(interval=50, hooks=[dict(type="TextLoggerHook")])
 custom_hooks = [dict(type="NumClassCheckHook")]
-
 dist_params = dict(backend="nccl")
 log_level = "INFO"
-# load_from = None
-# resume_from = None
 workflow = [("train", 1)]
-
-# disable opencv multithreading to avoid system being overloaded
 opencv_num_threads = 0
-# set multi-process start method as `fork` to speed up the training
 mp_start_method = "fork"
-
-# Default setting for scaling LR automatically
-#   - `enable` means enable scaling LR automatically
-#       or not by default.
-#   - `base_batch_size` = (8 GPUs) x (2 samples per GPU).
 auto_scale_lr = dict(enable=False, base_batch_size=16)
-
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True
 )
-
-# In mstrain 3x config, img_scale=[(1333, 640), (1333, 800)],
-# multiscale_mode='range'
 train_pipeline = [
     dict(type="LoadImageFromFile"),
     dict(type="LoadAnnotations", with_bbox=True),
@@ -57,7 +30,12 @@ train_pipeline = [
         keep_ratio=True,
     ),
     dict(type="RandomFlip", flip_ratio=0.5),
-    dict(type="Normalize", **img_norm_cfg),
+    dict(
+        type="Normalize",
+        mean=[123.675, 116.28, 103.53],
+        std=[58.395, 57.12, 57.375],
+        to_rgb=True,
+    ),
     dict(type="Pad", size_divisor=32),
     dict(type="DefaultFormatBundle"),
     dict(type="Collect", keys=["img", "gt_bboxes", "gt_labels"]),
@@ -71,15 +49,18 @@ test_pipeline = [
         transforms=[
             dict(type="Resize", keep_ratio=True),
             dict(type="RandomFlip"),
-            dict(type="Normalize", **img_norm_cfg),
+            dict(
+                type="Normalize",
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375],
+                to_rgb=True,
+            ),
             dict(type="Pad", size_divisor=32),
             dict(type="ImageToTensor", keys=["img"]),
             dict(type="Collect", keys=["img"]),
         ],
     ),
 ]
-
-# Use RepeatDataset to speed up training
 data = dict(
     samples_per_gpu=2,
     workers_per_gpu=2,
@@ -87,42 +68,94 @@ data = dict(
         type="RepeatDataset",
         times=3,
         dataset=dict(
-            type=dataset_type,
-            ann_file=data_root + "labels/train/annotation.json",
-            img_prefix=data_root + "images/train/",
-            pipeline=train_pipeline,
-            classes=classes,
+            type="CocoDataset",
+            ann_file="/workspace/data/custom-sar-ship-fit/labels/train/annotation.json",
+            img_prefix="/workspace/data/custom-sar-ship-fit/images/train/",
+            pipeline=[
+                dict(type="LoadImageFromFile"),
+                dict(type="LoadAnnotations", with_bbox=True),
+                dict(
+                    type="Resize",
+                    img_scale=[(1333, 640), (1333, 800)],
+                    multiscale_mode="range",
+                    keep_ratio=True,
+                ),
+                dict(type="RandomFlip", flip_ratio=0.5),
+                dict(
+                    type="Normalize",
+                    mean=[123.675, 116.28, 103.53],
+                    std=[58.395, 57.12, 57.375],
+                    to_rgb=True,
+                ),
+                dict(type="Pad", size_divisor=32),
+                dict(type="DefaultFormatBundle"),
+                dict(type="Collect", keys=["img", "gt_bboxes", "gt_labels"]),
+            ],
+            classes=("ship",),
         ),
     ),
     val=dict(
-        type=dataset_type,
-        ann_file=data_root + "labels/val/annotation.json",
-        img_prefix=data_root + "images/val/",
-        pipeline=test_pipeline,
-        classes=classes,
+        type="CocoDataset",
+        ann_file="/workspace/data/custom-sar-ship-fit/labels/val/annotation.json",
+        img_prefix="/workspace/data/custom-sar-ship-fit/images/val/",
+        pipeline=[
+            dict(type="LoadImageFromFile"),
+            dict(
+                type="MultiScaleFlipAug",
+                img_scale=(1333, 800),
+                flip=False,
+                transforms=[
+                    dict(type="Resize", keep_ratio=True),
+                    dict(type="RandomFlip"),
+                    dict(
+                        type="Normalize",
+                        mean=[123.675, 116.28, 103.53],
+                        std=[58.395, 57.12, 57.375],
+                        to_rgb=True,
+                    ),
+                    dict(type="Pad", size_divisor=32),
+                    dict(type="ImageToTensor", keys=["img"]),
+                    dict(type="Collect", keys=["img"]),
+                ],
+            ),
+        ],
+        classes=("ship",),
     ),
     test=dict(
-        type=dataset_type,
-        ann_file=data_root + "labels/test/annotation.json",
-        img_prefix=data_root + "images/test/",
-        pipeline=test_pipeline,
-        classes=classes,
+        type="CocoDataset",
+        ann_file="/workspace/data/custom-sar-ship-fit/labels/test/annotation.json",
+        img_prefix="/workspace/data/custom-sar-ship-fit/images/test/",
+        pipeline=[
+            dict(type="LoadImageFromFile"),
+            dict(
+                type="MultiScaleFlipAug",
+                img_scale=(1333, 800),
+                flip=False,
+                transforms=[
+                    dict(type="Resize", keep_ratio=True),
+                    dict(type="RandomFlip"),
+                    dict(
+                        type="Normalize",
+                        mean=[123.675, 116.28, 103.53],
+                        std=[58.395, 57.12, 57.375],
+                        to_rgb=True,
+                    ),
+                    dict(type="Pad", size_divisor=32),
+                    dict(type="ImageToTensor", keys=["img"]),
+                    dict(type="Collect", keys=["img"]),
+                ],
+            ),
+        ],
+        classes=("ship",),
     ),
 )
 evaluation = dict(interval=1, metric="bbox")
-
-# optimizer
 optimizer = dict(type="SGD", lr=0.02, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=None)
-
-# learning policy
-# Experiments show that using step=[9, 11] has higher performance
 lr_config = dict(
     policy="step", warmup="linear", warmup_iters=500, warmup_ratio=0.001, step=[9, 11]
 )
 runner = dict(type="EpochBasedRunner", max_epochs=12)
-
-# model settings
 model = dict(
     type="FasterRCNN",
     backbone=dict(
@@ -170,7 +203,7 @@ model = dict(
             in_channels=256,
             fc_out_channels=1024,
             roi_feat_size=7,
-            num_classes=num_classes,
+            num_classes=1,
             bbox_coder=dict(
                 type="DeltaXYWHBBoxCoder",
                 target_means=[0.0, 0.0, 0.0, 0.0],
@@ -181,7 +214,6 @@ model = dict(
             loss_bbox=dict(type="L1Loss", loss_weight=1.0),
         ),
     ),
-    # model training and testing settings
     train_cfg=dict(
         rpn=dict(
             assigner=dict(
@@ -239,7 +271,8 @@ model = dict(
         rcnn=dict(
             score_thr=0.05, nms=dict(type="nms", iou_threshold=0.5), max_per_img=100
         ),
-        # soft-nms is also supported for rcnn testing
-        # e.g., nms=dict(type='soft_nms', iou_threshold=0.5, min_score=0.05)
     ),
 )
+work_dir = "./work_dirs/sar_det_config"
+auto_resume = False
+gpu_ids = [0]

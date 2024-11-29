@@ -1,58 +1,21 @@
 # Image enhancement
 
-> Python version 3.10.4
+## AVT containers
 
-## Third-party tools
-
-```bash
-sudo apt-get install gdal-bin
-```
-
-## Brightness adjustment & CLAHE
-
-```python
-im = cv2.imread(im_path)
-enhanced_im = adjust_gamma(im, 0.4)
-enhanced_im = hist_equalize(im)
-```
-
-## Binary distribution
+For building images
 
 ```bash
-pyinstaller cli_enhance.py --onefile -n enhancing
+docker-compose -f ./docker/lsk/compose.yml up --build
 
-cp ./dist/enhancing ~/bin/
+# Then new container starts
+# avt_ship_eo_detection: detect objects on EO images
+# avt_ship_sar_detection: detect ships on SAR images
+# avt_change_detection: detect chagnes on images
 ```
 
-## LSK inference
-
-- First make sure that LSKNet was clone into current directory by name 'LSKNet'
+For save/load
 
 ```bash
-git clone -q https://github.com/huypl53/LSKNet/ LSKNet
-```
-
-- Install dependencies
-
-```bash
-bash ./scripts/install_requirements.sh
-```
-
-- Start program
-
-```bash
-bash -i <path/to/scripts/run_lsk.sh>
-```
-
-## Anomaly detections
-
-### Reed-xiaoli
-
-```bash
-# find the anomaly area
-# save the mask.png and export anomaly areas to .txt, each line consists of keypoints
-python ./anomaly/rx.py <path/to/image>
-
-# draw the anomaly albel
-python ./anomaly/rx_draw.py <path/to/image> <path/to/label.txt>
+docker save -o avt-lee.tar avt-lee:latest
+docker load --input avt-lee.tar
 ```

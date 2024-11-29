@@ -1,53 +1,44 @@
 version: "3.8"
 
 services:
-  lsknet:
+  base_image: 
     build:
       context: ../../
       dockerfile: docker/lsk/Dockerfile
-    container_name: lsk-image
+    image: avt-lee:latest
+    command: ["/bin/true"]
 
-  lskbase:
-    image: lsk-lsknet:latest
-    volumes:
-      - ../../:/workspace/avt-detection
-      - ../../../data/:/workspace/data
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
-    shm_size: '8g'
-    container_name: lsk-base
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+  ship_eo_service:
+    <<: *base-service
+    container_name: avt_ship_eo_detection
+    command: python cli_lsk.py
 
-    working_dir: /workspace/avt-detection
-
-  ship_service:
-    extends:
-      # file: base.yml
-      service: lskbase
-    container_name: avt_ship_detection
-    # command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type SHIP"
-    command: tail -f /dev/null
-    profiles: ["ship"]
+  ship_sar_service:
+    <<: *base-service
+    container_name: avt_ship_sar_detection
+    command: python cli_lsk_sar.py
 
   change_service:
-    extends:
-      # file: base.yml
-      service: lskbase
+    <<: *base-service
     container_name: avt_change_detection
-    # command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type CHANGE"
-    command: conda run --no-capture-output -n sar-mmdet3 bash -c "cd /workspace/sar/mmdetection && "
-    profiles: ["change"]
+    command: python cli_change.py
 
-  military_service:
-    extends:
-      # file: base.yml
-      service: lskbase
-    container_name: avt_military_detection
-    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type MILITARY"
-    profiles: ["military"]
+
+x-base-service: &base-service
+  image: avt-lee:latest
+  volumes:
+    - ../../:/workspace/avt-detection-source
+    - ../../../data/:/workspace/data
+  environment:
+    - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
+  shm_size: '8g'
+  container_name: lsk-base
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+  working_dir: /workspace/avt-detection
