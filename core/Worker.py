@@ -1,22 +1,6 @@
-from app.db.connector import get_db
-from app.schema import DetectionParam, DetectionTaskType
-
-import argparse
-import asyncio
-import json
-import multiprocessing
 import multiprocessing.synchronize
-import os
-import re
-import traceback
 from typing import Dict, List, Tuple
 
-import cv2
-import numpy as np
-from dictdiffer import diff
-from core import Worker
-from mmdet.apis import init_detector
-from mmrotate.apis import inference_detector_by_patches
 from sqlalchemy import Select, select, text
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,24 +9,12 @@ from app.db.connector import AsyncSessionFactory, get_db
 
 # from app.db.spawn import DbProcess
 from app.model.task import TaskMd
-from app.schema import (
-    DetectionInputParam,
-    DetectionParam,
-    DetectionTaskType,
-    ExtractedObject,
-    ObjectCategory,
-)
-from app.service.binio import (
-    ftpTransfer,
-    read_ftp_bin_image,
-    write_ftp_image,
-    write_text_file,
-)
+from app.schema import DetectionInputParam, DetectionTaskType, ShipDetectionParam
 
 
 class Worker:
     def __init__(
-        self, task_type: DetectionTaskType, pre_param_conf: DetectionParam
+        self, task_type: DetectionTaskType, pre_param_conf: ShipDetectionParam
     ) -> None:
         self._task_type = task_type
         self._pre_param_conf = pre_param_conf

@@ -10,7 +10,7 @@ from app.connection import ftpTransfer
 from app.db.connector import get_db
 from app.model.task import TaskMd
 from app.schema import EnhancementOutput, EnhancementParam
-from app.service.binio import read_ftp_np_image, write_ftp_image
+from app.service.binio import read_ftp_np_image, write_ftp_np_image
 from enhancing.core import adjust_gamma, hist_equalize
 from log import logger
 
@@ -57,7 +57,7 @@ def process_image(im_path: str, out_dir: str, gamma=0.4) -> Tuple[bool, str]:
         result_im_name = f"{bname}_result{extension}"
         result_path = os.path.join(out_dir, result_im_name)
         logger.info(f"Write image to {result_path}")
-        write_ftp_image(enhanced_im, extension, result_path)
+        write_ftp_np_image(enhanced_im, extension, result_path)
         return True, result_path
     except Exception as e:
         logger.error(e)

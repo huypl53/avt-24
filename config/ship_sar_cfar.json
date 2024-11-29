@@ -1,0 +1,19 @@
+{
+  "algorithm": "phat_hien_tau_sar",
+  "mask_file": "",
+  "input_file": [],
+  "cfar": {
+    "guard_cells": [
+      1,
+      1
+    ],
+    "training_cells": [
+      5,
+      5
+    ],
+    "false_alarm_rate": 1e-2,
+    "scaling_factor": 1.5,
+    "min_training_cells": 1
+  },
+  "image_type": "SAR"
+}

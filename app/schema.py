@@ -3,6 +3,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel
 
+from utils.cfar import CFARParams
+
 
 class DetectionTaskType(Enum):
     SHIP = 5
@@ -56,9 +58,20 @@ class EnhancementOutput(BaseModel):
 
 class IOParam(BaseModel):
     out_dir: str = "/data/DETECTOR_OUTPUT/"
+    input_file: List[str]
+
+
+class ImageType(Enum):
+    EO = "EO"
+    SAR = "SAR"
 
 
 class DetectionParam(IOParam):
+    image_type: Optional[ImageType] = None
+    mask_file: Optional[str] = None
+
+
+class ShipDetectionParam(DetectionParam):
     algorithm: str
     config: str
     checkpoint: str
@@ -77,27 +90,43 @@ class DetectionParam(IOParam):
     iou: Optional[float] = None
 
 
-class DetectionInputParam(DetectionParam):
-    input_file: List[str]
+class DetectionInputParam(ShipDetectionParam):
+    pass
+
+    # 0: "plane",
+    # 1: "ship",
+    # 2: "storage_tank",
+    # 3: "baseball_diamond",
+    # 4: "tennis_court",
+    # 5: "basketball_court",
+    # 6: "ground_track_field",
+    # 7: "harbor",
+    # 8: "bridge",
+    # 9: "large_vehicle",
+    # 10: "small_vehicle",
+    # 11: "helicopter",
+    # 12: "roundabout",
+    # 13: "soccer_ball_field",
+    # 14: "swimming_pool",
 
 
 ObjectCategory = dict(
     {
-        0: "plane",
-        1: "ship",
-        2: "storage_tank",
-        3: "baseball_diamond",
-        4: "tennis_court",
-        5: "basketball_court",
-        6: "ground_track_field",
-        7: "harbor",
-        8: "bridge",
-        9: "large_vehicle",
-        10: "small_vehicle",
-        11: "helicopter",
-        12: "roundabout",
-        13: "soccer_ball_field",
-        14: "swimming_pool",
+        0: "may_bay",
+        1: "tau_thuyen",
+        2: "radar",
+        3: "san_bong",
+        4: "san_bong",
+        5: "san_bong",
+        6: "duong_chay",
+        7: "cang_bien",
+        8: "cau_duong_bo",
+        9: "phuong_tien_van_tai",
+        10: "phuong_tien_van_tai",
+        11: "truc_thang",
+        12: "bung_binh",
+        13: "san_bong_da",
+        14: "be_boi",
     }
 )
 # SHIP = 0
@@ -112,7 +141,15 @@ ObjectCategory = dict(
 
 class ExtractedObject(BaseModel):
     id: str
-    path: str
+    path: Optional[str] = None
     coords: List[float]
-    lb_path: Optional[str]
+    lb_path: Optional[str] = None
     class_id: Optional[str] = None
+
+
+class ChangeDetectionParam(IOParam):
+    mask_file: Optional[str] = None
+
+
+class ShipCfarDetectionParam(DetectionParam):
+    cfar: Optional[CFARParams] = dict()

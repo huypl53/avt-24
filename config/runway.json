@@ -1,0 +1,9 @@
+{
+  "canny_low": 100,
+  "canny_high": 200,
+  "rho": 1,
+  "theta": 0.017453292519943295,
+  "hough_threshold": 100,
+  "min_line_length": 100,
+  "max_line_gap": 20
+}

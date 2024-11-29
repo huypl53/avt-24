@@ -41,9 +41,13 @@ def read_ftp_bin_image(file_path: str):
     return r.getvalue()
 
 
-def write_ftp_image(image: np.ndarray, extension: str, file_path: str):
+def write_ftp_np_image(image: np.ndarray, extension: str, file_path: str):
     c = lambda f: ftpTransfer.upload_file(file_path, f)
     return write_np_image(image, extension, c)
+
+
+def write_ftp_bin_image(image: bytes, file_path: str):
+    ftpTransfer.upload_file(file_path, io.BytesIO(image))
 
 
 def write_text_file(text: str, file_path: str):

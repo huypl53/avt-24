@@ -6,3 +6,8 @@ pydantic_settings==2.3.4
 sqlalchemy==2.0.31
 matplotlib==3.9.2 
 asyncpg==0.29.0
+requests==2.32.3
+pillow==11.0.0
+pyproj==3.7.0
+rasterio==1.4.1
+tqdm==4.66.6

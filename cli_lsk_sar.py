@@ -14,7 +14,6 @@ import torch
 from dictdiffer import diff
 from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
-from mmseg.apis import inference_segmentor, init_segmentor
 from sqlalchemy import select, text
 from sqlalchemy.exc import InterfaceError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,16 +34,9 @@ from app.service.binio import (
     write_text_file,
 )
 from core.box_record import BoxDetect
-from core.raster import RasterImage
-from core.segment_slice import SlidingWindowInference
 from core.ship.classifier import classify_ship
 from log import logger
-from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
-from utils.processing import (
-    find_boundary_keypoints,
-    get_rotated_bbox_corners,
-    mask2rbboxes,
-)
+from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy, xyxy2xywh
 from utils.raster import (
     angle_to_bearings,
     latlong2meter,
@@ -183,7 +175,6 @@ async def async_main():
     # task_id = int(sys.argv[1])
 
     model = None
-    model_runway = None
     current_task = None
     reload_model = False
     tmp_im_path = ""
@@ -198,32 +189,14 @@ async def async_main():
     ]
     _num_task_types = len(avail_task_types)
     _i = 0
-
     while True:
         task_type = avail_task_types[_i % _num_task_types]
         _i += 1
         if _i >= _num_task_types:
             _i = 0
 
-        if model_runway is None:
-            config_file = (
-                "/workspace/mmsegmentation/work_dirs/runway_config/runway_config.py"
-            )
-            checkpoint_file = (
-                "/workspace/mmsegmentation/work_dirs/runway_config/latest.pth"
-            )
-            model_runway = init_segmentor(config_file, checkpoint_file, device="cuda:0")
-
-        def infer_image_runway(img) -> np.ndarray | None:
-            nonlocal model_runway
-            if model_runway is None:
-                return None
-
-            result = inference_segmentor(model_runway, img)
-            # print(f'Model result shape: {result[0].shape}')
-            return result[0]
-
-        pre_param_conf = load_task_config(task_type)
+        pre_param_conf = open("./config/ship_sar.json", "r").read()
+        pre_param_conf = ShipDetectionParam.model_validate_json(pre_param_conf)
         if not pre_param_conf:
             return
         input_params: DetectionInputParam = DetectionInputParam(
@@ -388,6 +361,7 @@ async def async_main():
         )
         tasks = await query_tasks_by_stmt(stmt_task, session)
 
+        print("Detect ship SAR")
         try:
             for task_i, t in enumerate(tasks):
                 current_task = t
@@ -415,7 +389,7 @@ async def async_main():
                 if "image_type" not in input_param_dict:
                     await _update_task("<image_type> field is requried!", 0)
                     continue
-                if input_param_dict["image_type"] != "EO":
+                if input_param_dict["image_type"] != "SAR":
                     continue
                 if "input_file" not in input_param_dict:
                     await _update_task("<input_file> field is requried!", 0)
@@ -431,7 +405,6 @@ async def async_main():
                 detection_history: List[List[List[BoxDetect]]] = [
                     [] for _ in range(len(input_params.input_file))
                 ]
-                seg_runway_results = []
                 for im_th, image_path in enumerate(input_params.input_file):
                     image_id = image_path
                     _, success = await _process_image(image_path)
@@ -446,18 +419,25 @@ async def async_main():
                         # TODO: handle score thresh
                         # classes_results = np.array(classes_results)
                         image_detect_results: List[Dict] = []
-                        for class_id, class_rbboxes in enumerate(classes_results):
+                        for class_id, class_bboxes in enumerate(classes_results):
                             detection_history[im_th].append([])
                             # output = result[:, result[..., -1] > input_params.score_thr]
-                            output = np.array(
-                                class_rbboxes
-                            )  # [[cx, cy, w, h, angle, score]] all in pixel, angle in radian
+                            output = np.array(class_bboxes)  # [[x1, y1, x2, y2, score]]
                             output = output[output[..., -1] > input_params.score_thr]
 
                             if not len(output):
                                 continue
+                            # output[..., 4] = np.degrees(output[..., 4])
+                            output_xywh = xyxy2xywh(output[..., :4])
+                            output = np.concatenate(
+                                (
+                                    output_xywh,
+                                    np.zeros((len(output), 1)),
+                                    np.expand_dims(output[..., -1], axis=-1),
+                                ),
+                                axis=-1,
+                            )
                             xyxyxyxy = xywhr2xyxyxyxy(output)
-                            output[..., 4] = np.degrees(output[..., 4])
                             rbboxes = list(
                                 [
                                     [
@@ -542,14 +522,7 @@ async def async_main():
                                     " ".join([str(i) for i in coords]), patch_lb_path
                                 )
 
-                                try:
-                                    if class_id == 1:
-                                        cls_name = classify_ship(p)
-                                    else:
-                                        cls_name = ObjectCategory[class_id]
-                                except:
-                                    extra_mesg += "Classify ship failed!"
-                                    cls_name = str(DetectionTaskType.SHIP.value)
+                                cls_name = "tau_thuyen"
 
                                 detect_obj_id = f"{im_th:03d}-{lb_im_id}-{cls_name}"
                                 image_detect_results.append(
@@ -566,88 +539,8 @@ async def async_main():
                             {"image_id": image_id, "detections": image_detect_results}
                         )
                     # -----Segment runway--------
-                    raster_image = RasterImage(tmp_im_path)
-                    raster_image.replace_image_data(im)
-
-                    # slicer = SlidingWindowInference(
-                    #     inference_fn=infer_image_runway,
-                    #     window_size=(1024, 1024),
-                    #     smoothier=True,
-                    # )
-
-                    # runway_mask = slicer(im)
-                    runway_mask = infer_image_runway(im)
-
-                    boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(
-                        np.uint8
-                    )
-                    cv2.imwrite(f"./tmp/{t.id}-runway-mask.png", boundary_mask_img)
-                    # keypoint_list = find_boundary_keypoints(boundary_mask_img)
-
-                    runway_rbboxes = mask2rbboxes(boundary_mask_img)
-                    runway_rbboxes = [
-                        bbox for bbox in runway_rbboxes if max(bbox[1]) > 300
-                    ]
-                    logger.info(f"task id {t.id} has {len(runway_rbboxes)} runways")
-                    runway_xyxyxyxy = [
-                        get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
-                    ]
-
-                    runway_xy = np.array(runway_xyxyxyxy).reshape(-1, 2)
-                    runway_lat_lon_xy = [
-                        raster_image.pixel_to_coords(xy[0], xy[1]) for xy in runway_xy
-                    ]
-                    runway_lat_lon_xyxyxyxy = np.array(runway_lat_lon_xy).reshape(-1, 8)
-
-                    runway_lat_lon_wh = np.array(
-                        [
-                            [
-                                latlong2meter(
-                                    row[i + 1],
-                                    row[i],
-                                    row[i + 3],
-                                    row[i + 2],
-                                )
-                                for i in range(0, 3, 2)
-                            ]
-                            for row in runway_lat_lon_xyxyxyxy
-                        ]
-                    )
-
-                    runway_lat_lon_wh = [
-                        wh if wh[0] < wh[1] else wh[::-1] for wh in runway_lat_lon_wh
-                    ]
-
-                    runway_center_lat_lon = [
-                        raster_image.pixel_to_coords(*rbbox[0])
-                        for rbbox in runway_rbboxes
-                    ]
-                    runway_coords = np.array(
-                        [
-                            [center[0], center[1], wh[0], wh[1], rbbox[-1]]
-                            for center, wh, rbbox in zip(
-                                runway_center_lat_lon, runway_lat_lon_wh, runway_rbboxes
-                            )
-                        ]
-                    )
-                    seg_runway_results.append(
-                        {
-                            "image_id": image_id,
-                            "runway": [
-                                ExtractedObject(
-                                    id=f"{im_th:03d}-{i:03d}-duong_bay",
-                                    coords=coords,
-                                    class_id="duong_bay",
-                                ).model_dump()
-                                for i, coords in enumerate(runway_coords)
-                            ],
-                        }
-                    )
                 output_dict = [
                     image_result["detections"] for image_result in detect_results
-                ]
-                output_dict += [
-                    image_result["runway"] for image_result in seg_runway_results
                 ]
                 if not task_infer_image_success:
                     await _update_task("Task inference failed!", 0)
@@ -697,5 +590,4 @@ async def async_main():
 
 
 if __name__ == "__main__":
-    print("Detect ship")
     asyncio.run(async_main())

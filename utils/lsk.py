@@ -203,3 +203,25 @@ def downsample_image(img: np.ndarray, rate_x: float, rate_y: float):
     return cv2.resize(
         img, (0, 0), fx=rate_x, fy=rate_y, interpolation=cv2.INTER_NEAREST
     )
+
+
+def xyxy2xywh(bboxes):
+    """Convert ``xyxy`` style bounding boxes to ``xywh`` style.
+
+    Args:
+        bboxes (numpy.ndarray): The bounding boxes, shape (N, 4), in
+            ``x1, y1, x2, y2`` order.
+
+    Returns:
+        numpy.ndarray: The converted bounding boxes, in ``xc, yc, w, h`` order,
+            shape (N, 4).
+    """
+
+    return np.array(
+        [
+            (bboxes[:, 0] + bboxes[:, 2]) / 2,  # xc: center of x
+            (bboxes[:, 1] + bboxes[:, 3]) / 2,  # yc: center of y
+            bboxes[:, 2] - bboxes[:, 0],  # w: width
+            bboxes[:, 3] - bboxes[:, 1],  # h: height
+        ]
+    ).T
