@@ -2,10 +2,10 @@
 
 ## AVT containers
 
-For building images
+For building images and start containers:
 
 ```bash
-docker-compose -f ./docker/lsk/compose.yml up --build
+docker-compose -f ./docker/lsk/compose.yml up --build -d
 
 # Then new container starts
 # avt_ship_eo_detection: detect objects on EO images
