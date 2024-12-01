@@ -36,6 +36,7 @@ services:
     command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py"
     depends_on:
       - base_image
+    restart: always
 
   ship_sar_service:
     <<: *base-service
@@ -43,6 +44,7 @@ services:
     command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk_sar.py"
     depends_on:
       - base_image
+    restart: always
 
   change_service:
     <<: *base-service
@@ -50,3 +52,4 @@ services:
     command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_change.py"
     depends_on:
       - base_image
+    restart: always
