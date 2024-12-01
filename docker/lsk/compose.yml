@@ -8,7 +8,7 @@ x-base-service: &base-service
     dockerfile: docker/lsk/Dockerfile
   # image: avt-lee:latest
   volumes:
-    - ../../:/workspace/avt-detection-source
+    - ../../:/workspace/avt-detection
     - ../../../data/:/workspace/data
   environment:
     - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible

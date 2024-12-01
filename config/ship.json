@@ -1,7 +1,7 @@
 {
   "algorithm": "phat_hien_tau_eo",
   "config": "/workspace/mmrotate/configs/s2anet/s2anet_r50_fpn_fp16_1x_dota_le135.py",
-  "checkpoint": "/workspace/avt-detection/sar/s2anet_r50_fpn_fp16_1x_dota_le135-5cac515c.pth",
+  "checkpoint": "/workspace/avt-detection/eo/s2anet_r50_fpn_fp16_1x_dota_le135-5cac515c.pth",
   "device": "cuda:0",
   "score_thr": 0.3,
   "patch_sizes": [1024],
