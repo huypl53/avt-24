@@ -24,7 +24,8 @@ docker load --input avt-lee.tar
 Archive source code
 
 ```bash
-git archive --format=tar.gz -o avt-detection.tar.gz HEAD
+# git archive --format=tar.gz -o avt-detection.tar.gz HEAD
+tar --exclude-vcs -zcf avt-detection.tar.gz ./avt-detection/
 ```
 
 ## Deployment
