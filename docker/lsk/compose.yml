@@ -34,6 +34,7 @@ services:
     <<: *base-service
     container_name: avt_ship_eo_detection
     command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py"
+    image: avt-lee:latest
     depends_on:
       - base_image
     restart: always
@@ -42,6 +43,7 @@ services:
     <<: *base-service
     container_name: avt_ship_sar_detection
     command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk_sar.py"
+    image: avt-lee:latest
     depends_on:
       - base_image
     restart: always
@@ -50,6 +52,7 @@ services:
     <<: *base-service
     container_name: avt_change_detection
     command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_change.py"
+    image: avt-lee:latest
     depends_on:
       - base_image
     restart: always

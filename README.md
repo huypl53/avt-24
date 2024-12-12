@@ -28,6 +28,12 @@ Archive source code
 tar --exclude-vcs -zcf avt-detection.tar.gz ./avt-detection/
 ```
 
+Compress all into 1 file
+
+```bash
+tar -czf avt-AI.tar.gz avt-detection.tar.gz avt-lee.tar 
+```
+
 ## Deployment
 
 ```bash
