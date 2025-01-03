@@ -477,14 +477,36 @@ async def async_main():
                                 ]
                             )
                             valid_idx: List[int] = []
-                            patches: List[np.ndarray] = []
+                            # patches: List[np.ndarray] = []
+
+                            skip = 0
+                            cls_names: List[str] = []
                             for i, box in enumerate(rbboxes):
                                 patch = crop_rotated_rectangle(
                                     im, box
                                 )  # patch if None if crop failed
                                 if patch is not None:
-                                    patches.append(patch)
+                                    # patches.append(patch)
                                     valid_idx.append(i)
+
+                                    lb_im_id = f"{class_id:03d}_{i-skip:04d}"
+                                    path = os.path.join(save_dir, lb_im_id)
+                                    # patch_lb_path = path + ".txt"
+                                    patch_im_path = path + ".png"
+
+                                    write_ftp_np_image(patch, ".png", patch_im_path)
+                                    try:
+                                        if class_id == 1:
+                                            name = classify_ship(patch)
+                                        else:
+                                            name = ObjectCategory[class_id]
+                                    except:
+                                        extra_mesg += "Classify ship failed!"
+                                        name = str(DetectionTaskType.SHIP.value)
+                                    cls_names.append(name)
+                                else:
+                                    skip += 1
+
                             output = output[valid_idx]
                             xyxyxyxy = xyxyxyxy[valid_idx]
                             flat_xy = xyxyxyxy.reshape(-1, 2)
@@ -534,8 +556,8 @@ async def async_main():
                                 #     ]
                                 #     lat_long_coords = lat_long_coords[match_adsb_indices]
                                 pass
-                            for box_i, (p, c) in enumerate(
-                                zip(patches, lat_long_coords)
+                            for box_i, (cls_name, c) in enumerate(
+                                zip(cls_names, lat_long_coords)
                             ):
                                 lb_im_id = f"{class_id:03d}_{box_i:04d}"
                                 path = os.path.join(save_dir, lb_im_id)
@@ -543,19 +565,9 @@ async def async_main():
                                 patch_im_path = path + ".png"
                                 # Box cx, cy, w, h, angle
                                 coords = c.tolist()
-                                write_ftp_np_image(p, ".png", patch_im_path)
                                 write_text_file(
                                     " ".join([str(i) for i in coords]), patch_lb_path
                                 )
-
-                                try:
-                                    if class_id == 1:
-                                        cls_name = classify_ship(p)
-                                    else:
-                                        cls_name = ObjectCategory[class_id]
-                                except:
-                                    extra_mesg += "Classify ship failed!"
-                                    cls_name = str(DetectionTaskType.SHIP.value)
 
                                 detect_obj_id = f"{im_th:03d}-{lb_im_id}-{cls_name}"
                                 image_detect_results.append(
