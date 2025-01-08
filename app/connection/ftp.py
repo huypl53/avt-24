@@ -28,6 +28,7 @@ class _FtpConnector:
         self.connect_status = ""
         self.login_status = ""
 
+    @repeat_try
     def _try_connect(self):
         self.connect(
             settings.FTP_HOSTNAME,

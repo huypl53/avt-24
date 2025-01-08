@@ -6,6 +6,7 @@ import os
 import re
 import traceback
 from datetime import datetime
+from html.entities import name2codepoint
 from typing import Dict, List, Tuple
 
 import cv2
@@ -212,7 +213,16 @@ async def async_main():
 
             result = inference_segmentor(model_runway, img)
             # print(f'Model result shape: {result[0].shape}')
-            return result[0]
+            runway_mask = result[0]
+            if runway_mask is None:
+                return None
+            # return result[0]
+            boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(np.uint8)
+            cv2.imwrite(f"./tmp/{t.id}-runway-mask.png", boundary_mask_img)
+            # keypoint_list = find_boundary_keypoints(boundary_mask_img)
+
+            runway_rbboxes = mask2rbboxes(boundary_mask_img)
+            return runway_rbboxes
 
         pre_param_conf = load_task_config(task_type)
         if not pre_param_conf:
@@ -585,7 +595,9 @@ async def async_main():
                         )
                     # -----Segment runway--------
                     raster_image = RasterImage(tmp_im_path)
-                    raster_image.replace_image_data(im)
+
+                    # TODO: no need to replace image data
+                    # raster_image.replace_image_data(im)
 
                     # slicer = SlidingWindowInference(
                     #     inference_fn=infer_image_runway,
@@ -594,20 +606,13 @@ async def async_main():
                     # )
 
                     # runway_mask = slicer(im)
-                    runway_mask = infer_image_runway(im)
-                    if runway_mask is None:
+                    runway_rbboxes = infer_image_runway(im)
+                    if runway_rbboxes is None:
                         continue
 
-                    boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(
-                        np.uint8
-                    )
-                    cv2.imwrite(f"./tmp/{t.id}-runway-mask.png", boundary_mask_img)
-                    # keypoint_list = find_boundary_keypoints(boundary_mask_img)
-
-                    runway_rbboxes = mask2rbboxes(boundary_mask_img)
-                    runway_rbboxes = [
-                        bbox for bbox in runway_rbboxes if max(bbox[1]) > 300
-                    ]
+                    # runway_rbboxes = [
+                    #     bbox for bbox in runway_rbboxes if max(bbox[1]) > 300
+                    # ]
                     logger.info(f"task id {t.id} has {len(runway_rbboxes)} runways")
                     runway_xyxyxyxy = [
                         get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
