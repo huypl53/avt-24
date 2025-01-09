@@ -39,7 +39,7 @@ from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy, xyxy2xywh
 from utils.raster import (
     angle_to_bearings,
-    latlong2meter,
+    lonlat2meter,
     pixel_point_to_lat_long,
     read_tif_meta,
 )
@@ -477,7 +477,7 @@ async def async_main():
                                 lat_long_wh = np.array(
                                     [
                                         [
-                                            latlong2meter(
+                                            lonlat2meter(
                                                 row[i][1],
                                                 row[i][0],
                                                 row[i + 1][1],

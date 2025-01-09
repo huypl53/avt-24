@@ -15,6 +15,10 @@ class Runway:
     length_meters: float
     width_meters: float  # Added width field
     center_point: Tuple[float, float]  # Added center point for reference
+    angle: Optional[float] = None
+
+    def __str__(self):
+        return f"Runway: {self.length_meters:.1f}m x {self.width_meters:.1f}m, at {self.center_point}"
 
 
 def split_image(
@@ -143,7 +147,7 @@ def merge_boxes(
         raise ValueError(f"Error merging boxes: {str(e)}")
 
 
-def process_image(
+def process_runway_image(
     image: np.ndarray,
     inference_segmentor,
     pixel_to_latlon,
@@ -258,6 +262,7 @@ def process_image(
                         length_meters=length,
                         width_meters=width,
                         center_point=center_latlon,
+                        angle=angle,
                     )
                 )
 

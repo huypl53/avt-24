@@ -37,6 +37,7 @@ from app.service.binio import (
 )
 from core.box_record import BoxDetect
 from core.raster import RasterImage
+from core.runway import Runway, process_runway_image
 from core.segment_slice import SlidingWindowInference
 from core.ship.classifier import classify_ship
 from log import logger
@@ -48,7 +49,8 @@ from utils.processing import (
 )
 from utils.raster import (
     angle_to_bearings,
-    latlong2meter,
+    latlon2meter,
+    lonlat2meter,
     pixel_point_to_lat_long,
     read_tif_meta,
 )
@@ -535,7 +537,7 @@ async def async_main():
                                 lat_long_wh = np.array(
                                     [
                                         [
-                                            latlong2meter(
+                                            lonlat2meter(
                                                 row[i][1],
                                                 row[i][0],
                                                 row[i + 1][1],
@@ -606,55 +608,88 @@ async def async_main():
                     # )
 
                     # runway_mask = slicer(im)
-                    runway_rbboxes = infer_image_runway(im)
-                    if runway_rbboxes is None:
+                    # runway_rbboxes = infer_image_runway(im)
+                    # if runway_rbboxes is None:
+                    #     continue
+
+                    try:
+                        runways: List[Runway] = process_runway_image(
+                            im,
+                            infer_image_runway,
+                            pixel_to_latlon=lambda x, y: raster_image.pixel_to_coords(
+                                x, y
+                            ),
+                            calculate_distance=lambda point1, point2: latlon2meter(
+                                *point1, *point2
+                            ),
+                        )
+
+                    except Exception as e:
+                        logger.error(e)
                         continue
 
                     # runway_rbboxes = [
                     #     bbox for bbox in runway_rbboxes if max(bbox[1]) > 300
                     # ]
-                    logger.info(f"task id {t.id} has {len(runway_rbboxes)} runways")
-                    runway_xyxyxyxy = [
-                        get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
-                    ]
+                    logger.info(
+                        f"Task id {t.id} has {len(runways)} runways. Details: {runways}"
+                    )
 
-                    runway_xy = np.array(runway_xyxyxyxy).reshape(-1, 2)
-                    runway_lat_lon_xy = [
-                        raster_image.pixel_to_coords(xy[0], xy[1]) for xy in runway_xy
-                    ]
-                    runway_lat_lon_xyxyxyxy = np.array(runway_lat_lon_xy).reshape(-1, 8)
+                    # runway_xyxyxyxy = [
+                    #     get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
+                    # ]
 
-                    runway_lat_lon_wh = np.array(
+                    # runway_xy = np.array(runway_xyxyxyxy).reshape(-1, 2)
+                    # runway_lat_lon_xy = [
+                    #     raster_image.pixel_to_coords(xy[0], xy[1]) for xy in runway_xy
+                    # ]
+                    # runway_lat_lon_xyxyxyxy = np.array(runway_lat_lon_xy).reshape(-1, 8)
+
+                    # runway_lat_lon_wh = np.array(
+                    #     [
+                    #         [
+                    #             latlong2meter(
+                    #                 row[i + 1],
+                    #                 row[i],
+                    #                 row[i + 3],
+                    #                 row[i + 2],
+                    #             )
+                    #             for i in range(0, 3, 2)
+                    #         ]
+                    #         for row in runway_lat_lon_xyxyxyxy
+                    #     ]
+                    # )
+
+                    # runway_lat_lon_wh = [
+                    #     wh if wh[0] < wh[1] else wh[::-1] for wh in runway_lat_lon_wh
+                    # # ]
+
+                    # runway_center_lat_lon = [
+                    #     raster_image.pixel_to_coords(*rbbox[0])
+                    #     for rbbox in runway_rbboxes
+                    # ]
+                    # runway_coords = np.array(
+                    #     [
+                    #         [center[0], center[1], wh[0], wh[1], rbbox[-1]]
+                    #         for center, wh, rbbox in zip(
+                    #             runway_center_lat_lon, runway_lat_lon_wh, runway_rbboxes
+                    #         )
+                    #     ]
+                    # )
+                    runway_coords = [
                         [
                             [
-                                latlong2meter(
-                                    row[i + 1],
-                                    row[i],
-                                    row[i + 3],
-                                    row[i + 2],
-                                )
-                                for i in range(0, 3, 2)
+                                r.center_point[0],
+                                r.center_point[1],
+                                r.width_meters,
+                                r.length_meters,
+                                r.angle,
                             ]
-                            for row in runway_lat_lon_xyxyxyxy
+                            for r in runways
+                            if r.length_meters > input_params.runway_min_length or 500
                         ]
-                    )
-
-                    runway_lat_lon_wh = [
-                        wh if wh[0] < wh[1] else wh[::-1] for wh in runway_lat_lon_wh
                     ]
 
-                    runway_center_lat_lon = [
-                        raster_image.pixel_to_coords(*rbbox[0])
-                        for rbbox in runway_rbboxes
-                    ]
-                    runway_coords = np.array(
-                        [
-                            [center[0], center[1], wh[0], wh[1], rbbox[-1]]
-                            for center, wh, rbbox in zip(
-                                runway_center_lat_lon, runway_lat_lon_wh, runway_rbboxes
-                            )
-                        ]
-                    )
                     seg_runway_results.append(
                         {
                             "image_id": image_id,
@@ -668,6 +703,7 @@ async def async_main():
                             ],
                         }
                     )
+
                 output_dict = [
                     image_result["detections"] for image_result in detect_results
                 ]

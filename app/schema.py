@@ -93,6 +93,7 @@ class EODetectionParam(DetectionParam):
     # runway
     runway_config: Optional[str] = None
     runway_ckpt: Optional[str] = None
+    runway_min_length: Optional[int] = 500
 
 
 class DetectionInputParam(EODetectionParam):

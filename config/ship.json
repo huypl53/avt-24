@@ -11,5 +11,6 @@
   "input_file": [""],
   "image_type": "EO",
   "runway_config": "/workspace/avt-detection/eo/runway_seg_config.py",
-  "runway_ckpt": "/workspace/avt-detection/eo/runway_seg_ckpt.pth"
+  "runway_ckpt": "/workspace/avt-detection/eo/runway_seg_ckpt.pth",
+  "runway_min_length": 500
 }
