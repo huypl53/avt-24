@@ -28,7 +28,8 @@ def split_image(
     Split large image into overlapping patches.
     Returns list of (patch, (x_offset, y_offset)) tuples.
     """
-    img = cv2.imread(image)
+    # img = cv2.imread(image)
+    img = image
     height, width = img.shape[:2]
     patches = []
 
