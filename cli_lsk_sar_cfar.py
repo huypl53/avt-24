@@ -29,7 +29,7 @@ from core.raster import RasterImage
 from log import logger
 from utils.cfar import CFAR2D, CFARParams
 from utils.processing import get_rotated_bbox_corners, mask2rbboxes
-from utils.raster import latlong2meter
+from utils.raster import lonlat2meter
 from utils.transform import gen_fft_diff_mask, mask2image
 
 cfar_params = CFARParams(
@@ -423,7 +423,7 @@ async def async_main():
                         #     ]
                         # )
 
-                        ship_lat_lon_wh = parallel_process()(latlong2meter)(
+                        ship_lat_lon_wh = parallel_process()(lonlat2meter)(
                             np.concatenate(
                                 (
                                     ship_lat_lon_xyxyxyxy[..., [1, 0, 3, 2]],

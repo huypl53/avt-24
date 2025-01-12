@@ -1,53 +1,58 @@
 version: "3.8"
 
+
+x-base-service: &base-service
+  image: avt-lee:latest
+  build:
+    context: ../../
+    dockerfile: docker/lsk/Dockerfile
+  # image: avt-lee:latest
+  volumes:
+    - ../../:/workspace/avt-detection
+    - ../../../data/:/workspace/data
+  environment:
+    - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
+  shm_size: '8g'
+  container_name: lsk-base
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+  working_dir: /workspace/avt-detection
+
 services:
-  lsknet:
-    build:
-      context: ../../
-      dockerfile: docker/lsk/Dockerfile
-    container_name: lsk-image
+  base_image: 
+    <<: *base-service  # Use the same base service config to build the image
+    container_name: avt_base_detect
+    command: ["/bin/true"]
 
-  lskbase:
-    image: lsk-lsknet:latest
-    volumes:
-      - ../../:/workspace/avt-detection
-      - ../../../data/:/workspace/data
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
-    shm_size: '8g'
-    container_name: lsk-base
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+  ship_eo_service:
+    <<: *base-service
+    container_name: avt_ship_eo_detection
+    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py"
+    image: avt-lee:latest
+    depends_on:
+      - base_image
+    restart: always
 
-    working_dir: /workspace/avt-detection
-
-  ship_service:
-    extends:
-      # file: base.yml
-      service: lskbase
-    container_name: avt_ship_detection
-    # command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type SHIP"
-    command: tail -f /dev/null
-    profiles: ["ship"]
+  ship_sar_service:
+    <<: *base-service
+    container_name: avt_ship_sar_detection
+    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk_sar.py"
+    image: avt-lee:latest
+    depends_on:
+      - base_image
+    restart: always
 
   change_service:
-    extends:
-      # file: base.yml
-      service: lskbase
+    <<: *base-service
     container_name: avt_change_detection
-    # command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type CHANGE"
-    command: conda run --no-capture-output -n sar-mmdet3 bash -c "cd /workspace/sar/mmdetection && "
-    profiles: ["change"]
-
-  military_service:
-    extends:
-      # file: base.yml
-      service: lskbase
-    container_name: avt_military_detection
-    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py --task_type MILITARY"
-    profiles: ["military"]
+    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_change.py"
+    image: avt-lee:latest
+    depends_on:
+      - base_image
+    restart: always

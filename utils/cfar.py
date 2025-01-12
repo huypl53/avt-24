@@ -62,7 +62,7 @@ class CFAR2D:
         gc_start = max(0, tc - center_col + gc)
         gc_end = min(window.shape[1], tc - center_col + 2 * gc + 1)
 
-        guard_mask[gr_start:gr_end, gc_start:gc_Parallelend] = False
+        guard_mask[gr_start:gr_end, gc_start:gc_end] = False
 
         return window[guard_mask]
 

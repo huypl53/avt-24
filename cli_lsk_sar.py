@@ -23,9 +23,9 @@ from app.model.task import TaskMd
 from app.schema import (
     DetectionInputParam,
     DetectionTaskType,
+    EODetectionParam,
     ExtractedObject,
     ObjectCategory,
-    ShipDetectionParam,
 )
 from app.service.binio import (
     ftpTransfer,
@@ -39,7 +39,7 @@ from log import logger
 from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy, xyxy2xywh
 from utils.raster import (
     angle_to_bearings,
-    latlong2meter,
+    lonlat2meter,
     pixel_point_to_lat_long,
     read_tif_meta,
 )
@@ -147,17 +147,17 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     return tasks
 
 
-def load_task_config(task_type: DetectionTaskType) -> ShipDetectionParam | None:
+def load_task_config(task_type: DetectionTaskType) -> EODetectionParam | None:
     match task_type:
         case DetectionTaskType.SHIP:
             config = open("./config/ship.json", "r").read()
-            return ShipDetectionParam.model_validate_json(config)
+            return EODetectionParam.model_validate_json(config)
         case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
-            return ShipDetectionParam.model_validate_json(config)
+            return EODetectionParam.model_validate_json(config)
         case DetectionTaskType.MILITARY:
             config = open("./config/military.json", "r").read()
-            return ShipDetectionParam.model_validate_json(config)
+            return EODetectionParam.model_validate_json(config)
         case _:
             return None
 
@@ -196,7 +196,7 @@ async def async_main():
             _i = 0
 
         pre_param_conf = open("./config/ship_sar.json", "r").read()
-        pre_param_conf = ShipDetectionParam.model_validate_json(pre_param_conf)
+        pre_param_conf = EODetectionParam.model_validate_json(pre_param_conf)
         if not pre_param_conf:
             return
         input_params: DetectionInputParam = DetectionInputParam(
@@ -477,7 +477,7 @@ async def async_main():
                                 lat_long_wh = np.array(
                                     [
                                         [
-                                            latlong2meter(
+                                            lonlat2meter(
                                                 row[i][1],
                                                 row[i][0],
                                                 row[i + 1][1],

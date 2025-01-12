@@ -72,7 +72,11 @@ def pixel_point_to_lat_long(
     return ll_points
 
 
-def latlong2meter(lon1, lat1, lon2, lat2):
+def lonlat2meter(lon1, lat1, lon2, lat2):
+    return geopy.distance.geodesic((lat1, lon1), (lat2, lon2)).m
+
+
+def latlon2meter(lat1, lon1, lat2, lon2):
     return geopy.distance.geodesic((lat1, lon1), (lat2, lon2)).m
 
 

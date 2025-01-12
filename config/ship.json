@@ -1,7 +1,7 @@
 {
-  "algorithm": "phat_hien_tau",
-  "config": "/workspace/avt-detection/LSKNet/configs/s2anet/s2anet_r50_fpn_fp16_1x_dota_le135.py",
-  "checkpoint": "/workspace/avt-detection/s2anet_r50_fpn_fp16_1x_dota_le135-5cac515c.pth",
+  "algorithm": "phat_hien_tau_eo",
+  "config": "/workspace/mmrotate/configs/s2anet/s2anet_r50_fpn_fp16_1x_dota_le135.py",
+  "checkpoint": "/workspace/avt-detection/eo/s2anet_r50_fpn_fp16_1x_dota_le135-5cac515c.pth",
   "device": "cuda:0",
   "score_thr": 0.3,
   "patch_sizes": [1024],
@@ -9,5 +9,8 @@
   "img_ratios": [1],
   "merge_iou_thr": 0.1,
   "input_file": [""],
-  "image_type": "EO"
+  "image_type": "EO",
+  "runway_config": "/workspace/avt-detection/eo/runway_seg_config.py",
+  "runway_ckpt": "/workspace/avt-detection/eo/runway_seg_ckpt.pth",
+  "runway_min_length": 500
 }

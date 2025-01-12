@@ -6,6 +6,7 @@ import os
 import re
 import traceback
 from datetime import datetime
+from html.entities import name2codepoint
 from typing import Dict, List, Tuple
 
 import cv2
@@ -24,9 +25,9 @@ from app.model.task import TaskMd
 from app.schema import (
     DetectionInputParam,
     DetectionTaskType,
+    EODetectionParam,
     ExtractedObject,
     ObjectCategory,
-    ShipDetectionParam,
 )
 from app.service.binio import (
     ftpTransfer,
@@ -36,6 +37,7 @@ from app.service.binio import (
 )
 from core.box_record import BoxDetect
 from core.raster import RasterImage
+from core.runway import Runway, process_runway_image
 from core.segment_slice import SlidingWindowInference
 from core.ship.classifier import classify_ship
 from log import logger
@@ -47,7 +49,8 @@ from utils.processing import (
 )
 from utils.raster import (
     angle_to_bearings,
-    latlong2meter,
+    latlon2meter,
+    lonlat2meter,
     pixel_point_to_lat_long,
     read_tif_meta,
 )
@@ -155,17 +158,17 @@ async def query_tasks_by_stmt(stmt, session) -> List[TaskMd]:
     return tasks
 
 
-def load_task_config(task_type: DetectionTaskType) -> ShipDetectionParam | None:
+def load_task_config(task_type: DetectionTaskType) -> EODetectionParam | None:
     match task_type:
         case DetectionTaskType.SHIP:
             config = open("./config/ship.json", "r").read()
-            return ShipDetectionParam.model_validate_json(config)
+            return EODetectionParam.model_validate_json(config)
         case DetectionTaskType.CHANGE:
             config = open("./config/change.json", "r").read()
-            return ShipDetectionParam.model_validate_json(config)
+            return EODetectionParam.model_validate_json(config)
         case DetectionTaskType.MILITARY:
             config = open("./config/military.json", "r").read()
-            return ShipDetectionParam.model_validate_json(config)
+            return EODetectionParam.model_validate_json(config)
         case _:
             return None
 
@@ -205,15 +208,6 @@ async def async_main():
         if _i >= _num_task_types:
             _i = 0
 
-        if model_runway is None:
-            config_file = (
-                "/workspace/mmsegmentation/work_dirs/runway_config/runway_config.py"
-            )
-            checkpoint_file = (
-                "/workspace/mmsegmentation/work_dirs/runway_config/latest.pth"
-            )
-            model_runway = init_segmentor(config_file, checkpoint_file, device="cuda:0")
-
         def infer_image_runway(img) -> np.ndarray | None:
             nonlocal model_runway
             if model_runway is None:
@@ -221,7 +215,16 @@ async def async_main():
 
             result = inference_segmentor(model_runway, img)
             # print(f'Model result shape: {result[0].shape}')
-            return result[0]
+            runway_mask = result[0]
+            if runway_mask is None:
+                return None
+            # return result[0]
+            boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(np.uint8)
+            cv2.imwrite(f"./tmp/{t.id}-runway-mask.png", boundary_mask_img)
+            # keypoint_list = find_boundary_keypoints(boundary_mask_img)
+
+            runway_rbboxes = mask2rbboxes(boundary_mask_img)
+            return runway_rbboxes
 
         pre_param_conf = load_task_config(task_type)
         if not pre_param_conf:
@@ -255,7 +258,7 @@ async def async_main():
             update_process.start()
 
         def _update_param(input_param_dict: Dict):
-            nonlocal input_params, pre_param_conf, reload_model, model
+            nonlocal input_params, pre_param_conf, reload_model, model, model_runway
             if not pre_param_conf:
                 return
             input_param_no_file_dict = {
@@ -299,6 +302,21 @@ async def async_main():
                         input_params.checkpoint,
                         device=input_params.device,
                     )
+                    if model_runway is None:
+                        config_file = (
+                            "/workspace/avt-detection/eo/runway_seg_config.py"
+                            if not input_params.runway_config
+                            else input_params.runway_config
+                        )
+                        checkpoint_file = (
+                            "/workspace/avt-detection/eo/runway_seg_ckpt.pth"
+                            if not input_params.runway_ckpt
+                            else input_params.runway_ckpt
+                        )
+                        model_runway = init_segmentor(
+                            config_file, checkpoint_file, device="cuda:0"
+                        )
+
                     reload_model = False
                 except Exception as e:
                     clear_model(model)
@@ -471,14 +489,36 @@ async def async_main():
                                 ]
                             )
                             valid_idx: List[int] = []
-                            patches: List[np.ndarray] = []
+                            # patches: List[np.ndarray] = []
+
+                            skip = 0
+                            cls_names: List[str] = []
                             for i, box in enumerate(rbboxes):
                                 patch = crop_rotated_rectangle(
                                     im, box
                                 )  # patch if None if crop failed
                                 if patch is not None:
-                                    patches.append(patch)
+                                    # patches.append(patch)
                                     valid_idx.append(i)
+
+                                    lb_im_id = f"{class_id:03d}_{i-skip:04d}"
+                                    path = os.path.join(save_dir, lb_im_id)
+                                    # patch_lb_path = path + ".txt"
+                                    patch_im_path = path + ".png"
+
+                                    write_ftp_np_image(patch, ".png", patch_im_path)
+                                    try:
+                                        if class_id == 1:
+                                            name = classify_ship(patch)
+                                        else:
+                                            name = ObjectCategory[class_id]
+                                    except:
+                                        extra_mesg += "Classify ship failed!"
+                                        name = str(DetectionTaskType.SHIP.value)
+                                    cls_names.append(name)
+                                else:
+                                    skip += 1
+
                             output = output[valid_idx]
                             xyxyxyxy = xyxyxyxy[valid_idx]
                             flat_xy = xyxyxyxy.reshape(-1, 2)
@@ -497,7 +537,7 @@ async def async_main():
                                 lat_long_wh = np.array(
                                     [
                                         [
-                                            latlong2meter(
+                                            lonlat2meter(
                                                 row[i][1],
                                                 row[i][0],
                                                 row[i + 1][1],
@@ -528,8 +568,8 @@ async def async_main():
                                 #     ]
                                 #     lat_long_coords = lat_long_coords[match_adsb_indices]
                                 pass
-                            for box_i, (p, c) in enumerate(
-                                zip(patches, lat_long_coords)
+                            for box_i, (cls_name, c) in enumerate(
+                                zip(cls_names, lat_long_coords)
                             ):
                                 lb_im_id = f"{class_id:03d}_{box_i:04d}"
                                 path = os.path.join(save_dir, lb_im_id)
@@ -537,19 +577,9 @@ async def async_main():
                                 patch_im_path = path + ".png"
                                 # Box cx, cy, w, h, angle
                                 coords = c.tolist()
-                                write_ftp_np_image(p, ".png", patch_im_path)
                                 write_text_file(
                                     " ".join([str(i) for i in coords]), patch_lb_path
                                 )
-
-                                try:
-                                    if class_id == 1:
-                                        cls_name = classify_ship(p)
-                                    else:
-                                        cls_name = ObjectCategory[class_id]
-                                except:
-                                    extra_mesg += "Classify ship failed!"
-                                    cls_name = str(DetectionTaskType.SHIP.value)
 
                                 detect_obj_id = f"{im_th:03d}-{lb_im_id}-{cls_name}"
                                 image_detect_results.append(
@@ -567,7 +597,9 @@ async def async_main():
                         )
                     # -----Segment runway--------
                     raster_image = RasterImage(tmp_im_path)
-                    raster_image.replace_image_data(im)
+
+                    # TODO: no need to replace image data
+                    # raster_image.replace_image_data(im)
 
                     # slicer = SlidingWindowInference(
                     #     inference_fn=infer_image_runway,
@@ -576,60 +608,88 @@ async def async_main():
                     # )
 
                     # runway_mask = slicer(im)
-                    runway_mask = infer_image_runway(im)
+                    # runway_rbboxes = infer_image_runway(im)
+                    # if runway_rbboxes is None:
+                    #     continue
 
-                    boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(
-                        np.uint8
+                    try:
+                        runways: List[Runway] = process_runway_image(
+                            im,
+                            infer_image_runway,
+                            pixel_to_latlon=lambda x, y: raster_image.pixel_to_coords(
+                                x, y
+                            ),
+                            calculate_distance=lambda point1, point2: latlon2meter(
+                                *point1, *point2
+                            ),
+                        )
+
+                    except Exception as e:
+                        logger.error(e)
+                        continue
+
+                    # runway_rbboxes = [
+                    #     bbox for bbox in runway_rbboxes if max(bbox[1]) > 300
+                    # ]
+                    logger.info(
+                        f"Task id {t.id} has {len(runways)} runways. Details: {runways}"
                     )
-                    cv2.imwrite(f"./tmp/{t.id}-runway-mask.png", boundary_mask_img)
-                    # keypoint_list = find_boundary_keypoints(boundary_mask_img)
 
-                    runway_rbboxes = mask2rbboxes(boundary_mask_img)
-                    runway_rbboxes = [
-                        bbox for bbox in runway_rbboxes if max(bbox[1]) > 300
-                    ]
-                    logger.info(f"task id {t.id} has {len(runway_rbboxes)} runways")
-                    runway_xyxyxyxy = [
-                        get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
-                    ]
+                    # runway_xyxyxyxy = [
+                    #     get_rotated_bbox_corners(rbbox) for rbbox in runway_rbboxes
+                    # ]
 
-                    runway_xy = np.array(runway_xyxyxyxy).reshape(-1, 2)
-                    runway_lat_lon_xy = [
-                        raster_image.pixel_to_coords(xy[0], xy[1]) for xy in runway_xy
-                    ]
-                    runway_lat_lon_xyxyxyxy = np.array(runway_lat_lon_xy).reshape(-1, 8)
+                    # runway_xy = np.array(runway_xyxyxyxy).reshape(-1, 2)
+                    # runway_lat_lon_xy = [
+                    #     raster_image.pixel_to_coords(xy[0], xy[1]) for xy in runway_xy
+                    # ]
+                    # runway_lat_lon_xyxyxyxy = np.array(runway_lat_lon_xy).reshape(-1, 8)
 
-                    runway_lat_lon_wh = np.array(
+                    # runway_lat_lon_wh = np.array(
+                    #     [
+                    #         [
+                    #             latlong2meter(
+                    #                 row[i + 1],
+                    #                 row[i],
+                    #                 row[i + 3],
+                    #                 row[i + 2],
+                    #             )
+                    #             for i in range(0, 3, 2)
+                    #         ]
+                    #         for row in runway_lat_lon_xyxyxyxy
+                    #     ]
+                    # )
+
+                    # runway_lat_lon_wh = [
+                    #     wh if wh[0] < wh[1] else wh[::-1] for wh in runway_lat_lon_wh
+                    # # ]
+
+                    # runway_center_lat_lon = [
+                    #     raster_image.pixel_to_coords(*rbbox[0])
+                    #     for rbbox in runway_rbboxes
+                    # ]
+                    # runway_coords = np.array(
+                    #     [
+                    #         [center[0], center[1], wh[0], wh[1], rbbox[-1]]
+                    #         for center, wh, rbbox in zip(
+                    #             runway_center_lat_lon, runway_lat_lon_wh, runway_rbboxes
+                    #         )
+                    #     ]
+                    # )
+                    runway_coords = [
                         [
                             [
-                                latlong2meter(
-                                    row[i + 1],
-                                    row[i],
-                                    row[i + 3],
-                                    row[i + 2],
-                                )
-                                for i in range(0, 3, 2)
+                                r.center_point[0],
+                                r.center_point[1],
+                                r.width_meters,
+                                r.length_meters,
+                                r.angle,
                             ]
-                            for row in runway_lat_lon_xyxyxyxy
+                            for r in runways
+                            if r.length_meters > input_params.runway_min_length or 500
                         ]
-                    )
-
-                    runway_lat_lon_wh = [
-                        wh if wh[0] < wh[1] else wh[::-1] for wh in runway_lat_lon_wh
                     ]
 
-                    runway_center_lat_lon = [
-                        raster_image.pixel_to_coords(*rbbox[0])
-                        for rbbox in runway_rbboxes
-                    ]
-                    runway_coords = np.array(
-                        [
-                            [center[0], center[1], wh[0], wh[1], rbbox[-1]]
-                            for center, wh, rbbox in zip(
-                                runway_center_lat_lon, runway_lat_lon_wh, runway_rbboxes
-                            )
-                        ]
-                    )
                     seg_runway_results.append(
                         {
                             "image_id": image_id,
@@ -643,6 +703,7 @@ async def async_main():
                             ],
                         }
                     )
+
                 output_dict = [
                     image_result["detections"] for image_result in detect_results
                 ]
