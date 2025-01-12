@@ -2,18 +2,14 @@
 
 > Python version 3.10.4
 
+## Env config
+
+To update log level, database and ftp, please modify relevant values in .env
+
 ## Third-party tools
 
 ```bash
 sudo apt-get install gdal-bin
-```
-
-## Brightness adjustment & CLAHE
-
-```python
-im = cv2.imread(im_path)
-enhanced_im = adjust_gamma(im, 0.4)
-enhanced_im = hist_equalize(im)
 ```
 
 ## Binary distribution
