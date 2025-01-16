@@ -1,0 +1,90 @@
+from app.schema import TaskParamModel
+import asyncio
+import json
+import multiprocessing
+import multiprocessing.synchronize
+import os
+from datetime import datetime
+from typing import Dict, Tuple
+
+
+import numpy as np
+import torch
+from dictdiffer import diff
+from mmdet.apis import init_detector
+from mmrotate.apis import inference_detector_by_patches
+from mmseg.apis import inference_segmentor, init_segmentor
+from sqlalchemy import select, text
+from sqlalchemy.exc import InterfaceError, OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
+import argparse
+
+from app.schema import DetectionTaskType
+
+from app.db.connector import get_db
+from app.model.task import TaskMd
+from app.schema import (
+    DetectionInputParam,
+    DetectionTaskType,
+    EODetectionParam,
+    ExtractedObject,
+    ObjectCategory,
+)
+from app.service.binio import (
+    ftpTransfer,
+    read_ftp_bin_image,
+    write_ftp_np_image,
+    write_text_file,
+)
+from core.box_record import BoxDetect
+from core.raster import RasterImage
+from core.runway import Runway, process_runway_image
+from core.segment_slice import SlidingWindowInference
+from core.ship.classifier import classify_ship
+from log import logger
+from utils.lsk import crop_rotated_rectangle, xywhr2xyxyxyxy
+from utils.processing import (
+    find_boundary_keypoints,
+    get_rotated_bbox_corners,
+    mask2rbboxes,
+)
+from utils.query import query_tasks_by_stmt
+from utils.raster import (
+    angle_to_bearings,
+    latlon2meter,
+    lonlat2meter,
+    pixel_point_to_lat_long,
+    read_tif_meta,
+)
+
+
+class TaskWorker:
+    def __init__(self):
+        self.param: TaskParamModel = TaskParamModel()
+
+    def update_config():
+        pass
+
+    async def on_start():
+        if t.task_id_ref and t.task_id_ref != 0:
+            # t has to wait to task with id = t.task_id_ref
+            stmt_ref_tasks = (
+                select(TaskMd)
+                .where(TaskMd.id == t.task_id_ref)  # task type of ship detection
+                .where(TaskMd.task_stat == 1)
+                .order_by(TaskMd.task_stat.desc())
+            )
+            sub_tasks = await query_tasks_by_stmt(stmt_ref_tasks, session)
+            if len(sub_tasks) == 0:
+                msg = "Waiting for task id = {}".format(t.task_id_ref)
+                await _update_task(msg)
+
+        pass
+
+        pass
+
+    def on_error():
+        pass
+
+    def on_restart():
+        pass

@@ -78,22 +78,6 @@ def parse_param_dict(param_str: str) -> Dict:
     return param
 
 
-def stringify_dict_list(param: Dict):
-    for k, v in param.items():
-        if isinstance(v, list):
-            param[k] = f'"{json.dumps(v)}"'
-
-
-def filter_3d_array(array3d: np.ndarray, filter2d: np.ndarray) -> np.ndarray:
-    output = np.array(
-        [
-            [bbox for bbox, mask in zip(class_boxes, bbox_masks) if mask]
-            for class_boxes, bbox_masks in zip(array3d, filter2d)
-        ]
-    )
-    return output
-
-
 def update_task_chronologically(
     task_id: int,
     stop_event,

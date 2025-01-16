@@ -7,6 +7,10 @@ from pydantic import BaseModel
 from utils.cfar import CFARParams
 
 
+class TaskParamModel(BaseModel):
+    pass
+
+
 class DetectionTaskType(Enum):
     SHIP = 5
     CHANGE = 20
@@ -27,7 +31,7 @@ class DetectionTaskType(Enum):
 SHIP_LABELS = ["tau_ca", "tau_hang", "tau_quan_su"]
 
 
-class Management(BaseModel):
+class Management(TaskParamModel):
     task_id: int
     task_type: int  # 1: hiệu chỉnh (Học)
     # 2: tiền xử lý (Long)
@@ -47,17 +51,17 @@ class Management(BaseModel):
     task_id_ref: int
 
 
-class EnhancementParam(BaseModel):
+class EnhancementParam(TaskParamModel):
     input_file: str
     gamma: float = 0.4
     out_dir: str = "/data/RASTER_ARCHIVED/"
 
 
-class EnhancementOutput(BaseModel):
+class EnhancementOutput(TaskParamModel):
     output_file: str
 
 
-class IOParam(BaseModel):
+class IOParam(TaskParamModel):
     out_dir: str = "/data/DETECTOR_OUTPUT/"
     input_file: List[str]
 
@@ -145,7 +149,7 @@ ObjectCategory = dict(
 # Dota dataset
 
 
-class ExtractedObject(BaseModel):
+class ExtractedObject(TaskParamModel):
     id: str
     path: Optional[str] = None
     coords: List[float]
