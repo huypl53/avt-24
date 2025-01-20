@@ -14,6 +14,7 @@ RUN <<EOF
     conda init bash
     conda create -n avt-detection python=3.10 -y
     conda create -n sar-mmdet3 python=3.10 -y
+    conda create -n mmseg python=3.10 -y
 EOF
 
 # SHELL ["conda", "run", "-n", "sar-mmdet3", "/bin/bash", "-c"]
@@ -81,4 +82,25 @@ RUN <<EOF
     pip install ftfy==6.3.1 regex==2024.11.6 yapf==0.40.1
     pip install -e .
 
+EOF
+
+SHELL ["conda", "run", "-n", "mmseg", "/bin/bash", "-c"]
+
+RUN <<EOF
+    conda install pip=24.0 -y
+    conda install conda-forge::ninja=1.12.1 -y
+    pip install numpy==1.26.4
+    pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
+
+    pip install -U openmim
+    mim install "mmengine==0.7.4"
+    mim install "mmcv>=2.1.0"
+    pip install ftfy==6.3.1 regex==2024.11.6 yapf==0.40.1
+
+
+    cd /workspace/
+    git clone -bv1.2.2 https://github.com/open-mmlab/mmsegmentation.git mmseg122
+    # pip install -r requirements/mminstall.txt
+    cd mmseg122
+    pip install -v -e .
 EOF
