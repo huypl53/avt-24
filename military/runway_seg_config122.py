@@ -1,4 +1,4 @@
-from mmcv import Config
+from mmengine.config import Config
 
 # Dataset settings
 # dataset_type = "RunwayDataset"
@@ -13,7 +13,7 @@ optimizer_config = dict(type="Fp16OptimizerHook", loss_scale=512.0)
 fp16 = dict()
 
 crop_size = (769, 769)
-data_preprocessor = dict(size=crop_size)
+# data_preprocessor = dict(size=crop_size)
 
 # Config model heads following this: https://github.com/open-mmlab/mmsegmentation/blob/v0.30.0/docs/en/faq.md#how-to-handle-binary-segmentation-task
 
@@ -84,8 +84,30 @@ test_pipeline = [
     dict(type="LoadAnnotations"),
     dict(type="PackSegInputs"),
 ]
-train_dataloader = dict(dataset=dict(pipeline=train_pipeline))
-val_dataloader = dict(dataset=dict(pipeline=test_pipeline))
+train_dataloader = dict(
+    batch_size=2,
+    num_workers=2,
+    persistent_workers=True,
+    sampler=dict(type="InfiniteSampler", shuffle=True),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        data_prefix=dict(img_path="train/images", seg_map_path="train/labels"),
+        pipeline=train_pipeline,
+    ),
+)
+val_dataloader = dict(
+    batch_size=1,
+    num_workers=4,
+    persistent_workers=True,
+    sampler=dict(type="DefaultSampler", shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        data_prefix=dict(img_path="valid/images", seg_map_path="valid/labels"),
+        pipeline=test_pipeline,
+    ),
+)
 test_dataloader = val_dataloader
 
 val_evaluator = dict(type="IoUMetric", iou_metrics=["mIoU"])
@@ -129,7 +151,7 @@ default_hooks = dict(
 
 # deeplabv3_r50-d8_4xb2-80k_cityscapes-769x769.py
 
-# crop_size = (769, 769)
+crop_size = (769, 769)
 data_preprocessor = dict(
     type="SegDataPreProcessor",
     mean=[123.675, 116.28, 103.53],
@@ -139,6 +161,7 @@ data_preprocessor = dict(
     seg_pad_val=255,
     size=crop_size,
 )
+
 model = dict(
     type="EncoderDecoder",
     data_preprocessor=data_preprocessor,
@@ -157,12 +180,12 @@ model = dict(
     ),
     decode_head=dict(
         type="ASPPHead",
-        in_channels=2048,
+        in_channels=512,
         in_index=3,
-        channels=512,
+        channels=128,
         dilations=(1, 12, 24, 36),
         dropout_ratio=0.1,
-        num_classes=19,
+        num_classes=2,
         norm_cfg=norm_cfg,
         align_corners=False,
         loss_decode=dict(type="CrossEntropyLoss", use_sigmoid=False, loss_weight=1.0),
@@ -175,19 +198,21 @@ model = dict(
         num_convs=1,
         concat_input=False,
         dropout_ratio=0.1,
-        num_classes=19,
+        num_classes=2,
         norm_cfg=norm_cfg,
-        align_corners=False,
+        # align_corners=False,
         loss_decode=dict(type="CrossEntropyLoss", use_sigmoid=False, loss_weight=0.4),
+        # align_corners=True,
+        # in_channels=512,
+        # channels=128,
         align_corners=True,
-        in_channels=512,
-        channels=128,
+        in_channels=256,
+        channels=64,
     ),
     # model training and testing settings
     train_cfg=dict(),
     # test_cfg=dict(mode="whole"),
     # decode_head=dict(),
-    auxiliary_head=dict(align_corners=True, in_channels=256, channels=64),
     test_cfg=dict(mode="slide", crop_size=(769, 769), stride=(513, 513)),
     # decode_head=dict(
     # ),
@@ -200,18 +225,38 @@ cfg = Config.fromfile(
     "configs/deeplabv3/deeplabv3_r18-d8_4xb2-80k_cityscapes-769x769.py"
 )
 
-cfg.data_root = data_root
 cfg.dataset_type = dataset_type
+cfg.data_root = data_root
+cfg.optimizer_config = optimizer_config
+cfg.fp16 = fp16
+cfg.crop_size = crop_size
+cfg.param_scheduler = param_scheduler
 cfg.default_scope = default_scope
 cfg.env_cfg = env_cfg
-cfg.log_level = log_level
-cfg.log_processor = log_processor
-cfg.model = model
-cfg.norm_cfg = norm_cfg
-cfg.optim_wrapper = optim_wrapper
-cfg.param_scheduler = param_scheduler
 cfg.randomness = randomness
+cfg.img_ratios = img_ratios
+cfg.tta_pipeline = tta_pipeline
+cfg.norm_cfg = norm_cfg
+cfg.train_pipeline = train_pipeline
+cfg.test_pipeline = test_pipeline
+cfg.train_dataloader = train_dataloader
+cfg.val_dataloader = val_dataloader
+cfg.test_dataloader = test_dataloader
+cfg.val_evaluator = val_evaluator
+cfg.test_evaluator = test_evaluator
 cfg.vis_backends = vis_backends
 cfg.visualizer = visualizer
+cfg.log_processor = log_processor
+cfg.log_level = log_level
+cfg.load_from = load_from
+cfg.resume = resume
+cfg.tta_model = tta_model
+cfg.optimizer = optimizer
+cfg.optim_wrapper = optim_wrapper
+cfg.train_cfg = train_cfg
+cfg.val_cfg = val_cfg
+cfg.test_cfg = test_cfg
+cfg.data_preprocessor = data_preprocessor
+cfg.model = model
 # cfg.data = data
 cfg.dump("configs/deeplabv3/runway_config.py")
