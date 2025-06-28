@@ -375,8 +375,7 @@ def with_a_turn_logger(turn_logger: TurnLogger):
 
     return decorator
 
-logger = get_logger(__name__, log_file="./logs/main.log")
-
+logger = get_logger('main', log_file="./logs/main.log")
 
 # Example usage:
 if __name__ == "__main__":
