@@ -10,6 +10,7 @@ from typing import Dict, List
 from app.schema import DetectionTaskType, EODetectionParam
 from task_manager import TaskManager
 from image_processor import ImageProcessor
+import cv2
 
 
 async def test_task_manager():
@@ -48,34 +49,80 @@ async def test_image_processor():
     
     # Test model parameter update
     test_config = EODetectionParam(
+        out_dir="./output",
+        algorithm="phat_hien_tau_eo",
+        config="/workspace/mmrotate/configs/s2anet/s2anet_r50_fpn_fp16_1x_dota_le135.py",
+        checkpoint="/workspace/avt-detection/eo/s2anet_r50_fpn_fp16_1x_dota_le135-5cac515c.pth",
         device="cuda:0",
-        score_thr=0.5,
-        patch_sizes=[(1024, 1024)],
-        patch_steps=[(512, 512)],
-        img_ratios=[1.0],
-        merge_iou_thr=0.5,
-        runway_min_length=500,
-        out_dir="./output"
+        score_thr=0.3,
+        patch_sizes=[1024],
+        patch_steps=[824],
+        img_ratios=[1],
+        merge_iou_thr=0.1,
+        input_file=[""],
+        image_type="EO",
+        runway_config="/workspace/avt-detection/eo/runway_seg_config.py",
+        runway_ckpt="/workspace/avt-detection/eo/runway_seg_ckpt.pth",
+        runway_min_length=500
     )
     
     input_param_dict = {
         "image_type": "EO",
-        "input_file": ["test.tif"],
+        "input_file": ["tmp/quang_ninh_1m_part_1.tif"],
         "score_thr": 0.7,  # Different from config
         "device": "cuda:0"
     }
     
     try:
         input_params = image_processor.update_model_params(input_param_dict, test_config)
+        image_processor.set_input_params(input_params)
         print(f"Updated input params: score_thr={input_params.score_thr}")
         print(f"Model reload needed: {image_processor.reload_model}")
     except Exception as e:
         print(f"Model update test failed (expected without actual models): {e}")
+
     
+    detect_results = []
+    seg_runway_results = []
+    
+    for im_th, image_path in enumerate(input_param_dict["input_file"]):
+        image_id = image_path
+        
+        # Process image
+        # _, success = await image_processor.process_image(image_path, im_th)
+        # if not success:
+        #     continue
+
+        image_processor.im = cv2.imread(image_path)
+        # Perform inference
+        classes_results, success = await image_processor.infer_image()
+        if success and classes_results is not None and len(classes_results):
+            # Process detection results
+            image_detect_results = image_processor.process_detection_results(
+                classes_results, image_id, im_th
+            )
+            detect_results.append({
+                "image_id": image_id, 
+                "detections": image_detect_results
+            })
+    print(f"Detect results: {detect_results}")
+    
+    for im_th, image_path in enumerate(input_param_dict["input_file"]):
+        print(f"Processing image {im_th} of {len(input_param_dict['input_file'])}")
+        image_id = image_path
+        
+        # Process runway segmentation
+        runway_results = image_processor.process_runway_segmentation(image_id, im_th)
+        seg_runway_results.append({    
+            "image_id": image_id,
+            "runway": runway_results
+        })
+    
+    print(f"Seg runway results: {seg_runway_results}")
+        
     # Test memory error handling
     image_processor.handle_memory_error()
     print("Memory error handling test completed")
-    
     print("Image Processor tests completed!\n")
 
 
@@ -94,16 +141,22 @@ async def test_integration():
     if is_valid:
         print("2. Image Processor updates model parameters")
         test_config = EODetectionParam(
-            device="cuda:0",
-            score_thr=0.5,
-            patch_sizes=[(1024, 1024)],
-            patch_steps=[(512, 512)],
-            img_ratios=[1.0],
-            merge_iou_thr=0.5,
-            runway_min_length=500,
-            out_dir="./output"
-        )
-        
+        out_dir="./output",
+        algorithm="phat_hien_tau_eo",
+        config="/workspace/mmrotate/configs/s2anet/s2anet_r50_fpn_fp16_1x_dota_le135.py",
+        checkpoint="/workspace/avt-detection/eo/s2anet_r50_fpn_fp16_1x_dota_le135-5cac515c.pth",
+        device="cuda:0",
+        score_thr=0.3,
+        patch_sizes=[1024],
+        patch_steps=[824],
+        img_ratios=[1],
+        merge_iou_thr=0.1,
+        input_file=[""],
+        image_type="EO",
+        runway_config="/workspace/avt-detection/eo/runway_seg_config.py",
+        runway_ckpt="/workspace/avt-detection/eo/runway_seg_ckpt.pth",
+        runway_min_length=500
+    )
         try:
             input_params = image_processor.update_model_params(params, test_config)
             image_processor.set_input_params(input_params)
@@ -136,9 +189,9 @@ async def main():
     """Run all tests."""
     print("Starting module tests...\n")
     
-    await test_task_manager()
+    # await test_task_manager()
     await test_image_processor()
-    await test_integration()
+    # await test_integration()
     
     print("All tests completed!")
 

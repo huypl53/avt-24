@@ -125,6 +125,7 @@ class ImageProcessor:
                 input_params.checkpoint,
                 device=input_params.device,
             )
+            logger.info(f"Loaded model: {input_params.config}")
             
             if self.model_runway is None:
                 config_file = (
@@ -140,9 +141,11 @@ class ImageProcessor:
                 self.model_runway = init_segmentor(
                     config_file, checkpoint_file, device="cuda:0"
                 )
+                logger.info(f"Loaded runway model: {config_file}")
 
             self.reload_model = False
         except Exception as e:
+            logger.error(f"Error loading models: {e}")
             self.clear_model(self.model)
             self.model = None
             self.reload_model = True
