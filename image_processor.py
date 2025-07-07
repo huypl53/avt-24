@@ -172,7 +172,7 @@ class ImageProcessor:
         open(self.tmp_im_path, "wb").write(bin_im)
 
         image = np.asarray(bytearray(bin_im), dtype="uint8")
-        self.im = cv2.imdecode(image, cv.IMREAD_COLOR)
+        self.im = cv2.imdecode(image, cv2.IMREAD_COLOR)
         return self.im, True
     
     async def infer_image(self) -> Tuple[Optional[np.ndarray], bool]:
