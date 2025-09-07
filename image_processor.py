@@ -295,6 +295,7 @@ class ImageProcessor:
                 coords = c.tolist()
                 w, h = c[2:4]
                 cls_target, score = spatial_classify(w, h)
+                coords[-1] = score
                 write_text_file(" ".join([str(i) for i in coords]), patch_lb_path)
 
                 detect_obj_id = f"{im_th:03d}-{lb_im_id}-{cls_name}"

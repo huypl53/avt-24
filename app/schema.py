@@ -9,7 +9,9 @@ from utils.cfar import CFARParams
 
 
 class TaskParamModel(BaseModel):
-    detect_time: Optional[datetime] = Field(default_factory=lambda: datetime.now())
+    detect_time: Optional[str] = Field(
+        default_factory=lambda: datetime.utcnow().isoformat()
+    )
     pass
 
 
