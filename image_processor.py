@@ -1,4 +1,5 @@
 import os
+from classifier import spatial_classify
 import cv2
 import numpy as np
 import torch
@@ -292,6 +293,8 @@ class ImageProcessor:
                 patch_im_path = path + ".png"
 
                 coords = c.tolist()
+                w, h = c[2:4]
+                cls_target, score = spatial_classify(w, h)
                 write_text_file(" ".join([str(i) for i in coords]), patch_lb_path)
 
                 detect_obj_id = f"{im_th:03d}-{lb_im_id}-{cls_name}"
@@ -301,7 +304,7 @@ class ImageProcessor:
                         path=patch_im_path,
                         coords=coords,
                         lb_path=patch_lb_path,
-                        class_id=cls_name,
+                        class_id=cls_target.name,
                     ).model_dump()
                 )
 

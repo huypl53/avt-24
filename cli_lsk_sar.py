@@ -25,7 +25,6 @@ from app.schema import (
     DetectionTaskType,
     EODetectionParam,
     ExtractedObject,
-    ObjectCategory,
 )
 from app.service.binio import (
     ftpTransfer,
