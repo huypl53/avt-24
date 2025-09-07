@@ -35,12 +35,14 @@ from utils.raster import (
 )
 from logger import get_main_logger
 
-logger = get_main_logger(__name__, log_file="./logs/image_processor.log", level=logging.INFO)
+logger = get_main_logger(
+    __name__, log_file="./logs/image_processor.log", level=logging.INFO
+)
 
 
 class ImageProcessor:
     """Handles image processing operations including model management and inference."""
-    
+
     def __init__(self):
         self.model = None
         self.model_runway = None
@@ -50,14 +52,14 @@ class ImageProcessor:
         self.bname: str = ""
         self.save_dir: str = ""
         self.task_infer_image_success = False
-    
+
     def clear_model(self, model):
         """Clear model from memory."""
         del model
         # import gc
         # gc.collect()
         # torch.cuda.empty_cache()
-    
+
     def infer_image_runway(self, img) -> Optional[np.ndarray]:
         """Infer runway from image using segmentation model."""
         if self.model_runway is None:
@@ -67,15 +69,18 @@ class ImageProcessor:
         runway_mask = result[0]
         if runway_mask is None:
             return None
-        
+
         boundary_mask_img = np.where(runway_mask > 0, 255, 0).astype(np.uint8)
         cv2.imwrite(f"./tmp/{self.current_task_id}-runway-mask.png", boundary_mask_img)
-        
+
         from utils.processing import mask2rbboxes
+
         runway_rbboxes = mask2rbboxes(boundary_mask_img)
         return runway_rbboxes
-    
-    def update_model_params(self, input_param_dict: Dict, pre_param_conf: EODetectionParam) -> DetectionInputParam:
+
+    def update_model_params(
+        self, input_param_dict: Dict, pre_param_conf: EODetectionParam
+    ) -> DetectionInputParam:
         """Update model parameters and reload if necessary."""
         input_param_no_file_dict = {
             k: v
@@ -96,13 +101,9 @@ class ImageProcessor:
                 self.clear_model(self.model)
                 self.model = None
             self.reload_model = True
-            logger.info(
-                f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}"
-            )
-            pre_param_conf = pre_param_conf.model_copy(
-                update=input_param_no_file_dict
-            )
-        
+            logger.info(f"new_params_cnt: {new_params_cnt}, task: {input_param_dict}")
+            pre_param_conf = pre_param_conf.model_copy(update=input_param_no_file_dict)
+
         input_params = DetectionInputParam.model_validate(
             {
                 **pre_param_conf.model_dump(),
@@ -110,12 +111,12 @@ class ImageProcessor:
                 "input_file": input_param_dict["input_file"],
             }
         )
-        
+
         if self.reload_model:
             self._load_models(input_params)
-        
+
         return input_params
-    
+
     def _load_models(self, input_params: DetectionInputParam):
         """Load detection and segmentation models."""
         try:
@@ -126,7 +127,7 @@ class ImageProcessor:
                 device=input_params.device,
             )
             logger.info(f"Loaded model: {input_params.config}")
-            
+
             if self.model_runway is None:
                 config_file = (
                     "/workspace/avt-detection/eo/runway_seg_config.py"
@@ -150,8 +151,10 @@ class ImageProcessor:
             self.model = None
             self.reload_model = True
             raise e
-    
-    async def process_image(self, input_file: str, task_id: int) -> Tuple[Optional[np.ndarray], bool]:
+
+    async def process_image(
+        self, input_file: str, task_id: int
+    ) -> Tuple[Optional[np.ndarray], bool]:
         """Process image file and return image array and success status."""
         self.current_task_id = task_id
         self.bname = os.path.basename(input_file).rsplit(".", 1)[0]
@@ -167,14 +170,14 @@ class ImageProcessor:
         except Exception:
             self.task_infer_image_success = False
             return None, False
-        
+
         self.tmp_im_path = f"./tmp/{self.bname}.tif"
         open(self.tmp_im_path, "wb").write(bin_im)
 
         image = np.asarray(bytearray(bin_im), dtype="uint8")
-        self.im = cv2.imdecode(image, cv.IMREAD_COLOR)
+        self.im = cv2.imdecode(image, cv2.IMREAD_COLOR)
         return self.im, True
-    
+
     async def infer_image(self) -> Tuple[Optional[np.ndarray], bool]:
         """Perform inference on the loaded image."""
         try:
@@ -192,21 +195,23 @@ class ImageProcessor:
             logger.error(e)
             self.task_infer_image_success = False
             return None, False
-    
-    def process_detection_results(self, classes_results: np.ndarray, image_id: str, im_th: int) -> List[Dict]:
+
+    def process_detection_results(
+        self, classes_results: np.ndarray, image_id: str, im_th: int
+    ) -> List[Dict]:
         """Process detection results and return extracted objects."""
         if not classes_results or not len(classes_results):
             return []
-        
+
         image_detect_results: List[Dict] = []
-        
+
         for class_id, class_rbboxes in enumerate(classes_results):
             output = np.array(class_rbboxes)
             output = output[output[..., -1] > self.input_params.score_thr]
 
             if not len(output):
                 continue
-                
+
             xyxyxyxy = xywhr2xyxyxyxy(output)
             output[..., 4] = np.degrees(output[..., 4])
             rbboxes = list(
@@ -224,7 +229,7 @@ class ImageProcessor:
             valid_idx: List[int] = []
             skip = 0
             cls_names: List[str] = []
-            
+
             for i, box in enumerate(rbboxes):
                 patch = crop_rotated_rectangle(self.im, box)
                 if patch is not None:
@@ -254,9 +259,7 @@ class ImageProcessor:
 
             tif_meta = read_tif_meta(self.tmp_im_path)
             try:
-                lat_long_center = pixel_point_to_lat_long(
-                    output[..., 0:2], tif_meta
-                )
+                lat_long_center = pixel_point_to_lat_long(output[..., 0:2], tif_meta)
                 latlong_xy = pixel_point_to_lat_long(flat_xy, tif_meta)
                 latlong_xyxyxyxy = np.array(latlong_xy).reshape(-1, 4, 2)
                 lat_long_wh = np.array(
@@ -273,30 +276,23 @@ class ImageProcessor:
                         for row in latlong_xyxyxyxy
                     ]
                 )
-                lat_long_wh = [
-                    wh if wh[0] < wh[1] else wh[::-1]
-                    for wh in lat_long_wh
-                ]
+                lat_long_wh = [wh if wh[0] < wh[1] else wh[::-1] for wh in lat_long_wh]
             except Exception:
                 logger.error("Read crs from image failed!")
                 continue
-                
+
             lat_long_coords = np.concatenate(
                 (lat_long_center, lat_long_wh, output[..., 4:]), axis=-1
             )
-            
-            for box_i, (cls_name, c) in enumerate(
-                zip(cls_names, lat_long_coords)
-            ):
+
+            for box_i, (cls_name, c) in enumerate(zip(cls_names, lat_long_coords)):
                 lb_im_id = f"{class_id:03d}_{box_i:04d}"
                 path = os.path.join(self.save_dir, lb_im_id)
                 patch_lb_path = path + ".txt"
                 patch_im_path = path + ".png"
-                
+
                 coords = c.tolist()
-                write_text_file(
-                    " ".join([str(i) for i in coords]), patch_lb_path
-                )
+                write_text_file(" ".join([str(i) for i in coords]), patch_lb_path)
 
                 detect_obj_id = f"{im_th:03d}-{lb_im_id}-{cls_name}"
                 image_detect_results.append(
@@ -308,9 +304,9 @@ class ImageProcessor:
                         class_id=cls_name,
                     ).model_dump()
                 )
-        
+
         return image_detect_results
-    
+
     def process_runway_segmentation(self, image_id: str, im_th: int) -> List[Dict]:
         """Process runway segmentation and return runway objects."""
         raster_image = RasterImage(self.tmp_im_path)
@@ -320,7 +316,9 @@ class ImageProcessor:
                 self.im,
                 self.infer_image_runway,
                 pixel_to_latlon=lambda x, y: raster_image.pixel_to_coords(x, y),
-                calculate_distance=lambda point1, point2: latlon2meter(*point1, *point2),
+                calculate_distance=lambda point1, point2: latlon2meter(
+                    *point1, *point2
+                ),
             )
         except Exception as e:
             logger.error(e)
@@ -352,21 +350,22 @@ class ImageProcessor:
             ).model_dump()
             for i, coords in enumerate(runway_coords)
         ]
-        
+
         return runway_results
-    
+
     def cleanup_temp_files(self):
         """Clean up temporary files."""
         if os.path.isfile(self.tmp_im_path):
             os.remove(self.tmp_im_path)
-    
+
     def handle_memory_error(self):
         """Handle out of memory errors."""
         self.clear_model(self.model)
         self.model = None
         self.reload_model = True
         torch.cuda.synchronize()
-    
+
     def set_input_params(self, input_params: DetectionInputParam):
         """Set input parameters for processing."""
-        self.input_params = input_params 
+        self.input_params = input_params
+
