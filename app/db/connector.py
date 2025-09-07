@@ -1,6 +1,7 @@
 from collections.abc import AsyncGenerator
 from typing import Callable
-
+import sys
+import atexit
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.setting import settings
@@ -41,18 +42,34 @@ create_async_session_factory = lambda engine: async_sessionmaker(
 #         yield session
 
 
-async def get_db(factory_id: str) -> AsyncGenerator[AsyncSession, None]:
+async def get_db(factory_id: str) -> AsyncGenerator[AsyncSession]:
     global SESSION_FACTORY_STORE
-    
-    if factory_id in SESSION_FACTORY_STORE:
-        session_factory = SESSION_FACTORY_STORE[factory_id]
-    else:
-        engine = create_engine()
-        session_factory = create_async_session_factory(engine)
-        SESSION_FACTORY_STORE[factory_id] = session_factory
-
-    async with session_factory() as session:
-        try:
+    try:
+        if factory_id in SESSION_FACTORY_STORE:
+            session = SESSION_FACTORY_STORE[factory_id]()
             yield session
-        finally:
-            await session.close()
+        else:
+            engine = create_engine()
+            new_factory = create_async_session_factory(engine)
+            SESSION_FACTORY_STORE[factory_id] = new_factory
+            session = new_factory()
+            yield session
+    except Exception as e:
+        print(e)
+        pass
+    # finally:
+    #     await session.close()
+
+# @atexit.register
+# def cleanup():
+#     global SESSION_FACTORY_STORE
+#     for factory_id, factory in SESSION_FACTORY_STORE.items():
+#         try:
+#             engine = factory.kw["bind"]
+#             if engine:
+#                 engine.dispose()
+#                 print(f"Disposed engine for factory_id: {factory_id}")
+#         except Exception as e:
+#             print(f"Error disposing engine for factory_id {factory_id}: {e}")
+#     SESSION_FACTORY_STORE.clear()
+#     print("Cleaned up all session factories and disposed engines.")
