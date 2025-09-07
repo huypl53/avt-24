@@ -199,12 +199,12 @@ class ImageProcessor:
 
     def process_detection_results(
         self, classes_results: np.ndarray, image_id: str, im_th: int
-    ) -> List[Dict]:
+    ) -> List[ExtractedObject]:
         """Process detection results and return extracted objects."""
         if not classes_results or not len(classes_results):
             return []
 
-        image_detect_results: List[Dict] = []
+        image_detect_results: List[ExtractedObject] = []
 
         for class_id, class_rbboxes in enumerate(classes_results):
             output = np.array(class_rbboxes)
@@ -305,7 +305,7 @@ class ImageProcessor:
                         coords=coords,
                         lb_path=patch_lb_path,
                         class_id=cls_target.name,
-                    ).model_dump()
+                    )
                 )
 
         return image_detect_results

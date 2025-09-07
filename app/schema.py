@@ -1,13 +1,15 @@
 import string
+from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from utils.cfar import CFARParams
 
 
 class TaskParamModel(BaseModel):
+    detect_time: Optional[datetime] = Field(default_factory=lambda: datetime.now())
     pass
 
 

@@ -4,7 +4,7 @@ from typing import List
 from sqlalchemy.exc import InterfaceError, OperationalError
 import logging
 
-from app.schema import DetectionTaskType
+from app.schema import DetectionInputParam, DetectionTaskType
 from app.model.task import TaskMd
 from task_manager import TaskManager
 from image_processor import ImageProcessor
@@ -121,7 +121,9 @@ class LSKProcessor:
             self.task_manager.stop_task_update_process()
             self.image_processor.cleanup_temp_files()
 
-    async def _process_images(self, task, input_params) -> List:
+    async def _process_images(
+        self, task: TaskMd, input_params: DetectionInputParam
+    ) -> List:
         """Process all images for a task."""
         detect_results = []
         seg_runway_results = []
@@ -141,6 +143,9 @@ class LSKProcessor:
                 image_detect_results = self.image_processor.process_detection_results(
                     classes_results, image_id, im_th
                 )
+                if input_params.detect_time:
+                    for result in image_detect_results:
+                        result.detect_time = input_params.detect_time
                 detect_results.append(
                     {"image_id": image_id, "detections": image_detect_results}
                 )
@@ -190,4 +195,3 @@ async def async_main():
 if __name__ == "__main__":
     print("Detect ship - Refactored Version")
     asyncio.run(async_main())
-
