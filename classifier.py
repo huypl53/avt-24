@@ -39,7 +39,7 @@ def spatial_classify(w: float, h: float) -> Tuple[Target, float]:
     for i, target in enumerate(TARGET_LIST):
         t_w, t_h, t_r = target.width, target.height, target.ratio
         d.append((abs(w - t_w), abs(h - t_h), abs(ratio - t_r)))
-        print(target.name, d[-1])
+        # print(target.name, d[-1])
 
     w_d = np.array(d)
     w_d = w_d / np.sum(w_d, axis=0)
