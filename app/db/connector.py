@@ -41,17 +41,18 @@ create_async_session_factory = lambda engine: async_sessionmaker(
 #         yield session
 
 
-async def get_db(factory_id: str) -> AsyncGenerator[AsyncSession]:
+async def get_db(factory_id: str) -> AsyncGenerator[AsyncSession, None]:
     global SESSION_FACTORY_STORE
-    try:
-        if factory_id in SESSION_FACTORY_STORE:
-            session = SESSION_FACTORY_STORE[factory_id]()
+    
+    if factory_id in SESSION_FACTORY_STORE:
+        session_factory = SESSION_FACTORY_STORE[factory_id]
+    else:
+        engine = create_engine()
+        session_factory = create_async_session_factory(engine)
+        SESSION_FACTORY_STORE[factory_id] = session_factory
+
+    async with session_factory() as session:
+        try:
             yield session
-        else:
-            engine = create_engine()
-            new_factory = create_async_session_factory(engine)
-            SESSION_FACTORY_STORE[factory_id] = new_factory
-            session = new_factory()
-            yield session
-    finally:
-        await session.close()
+        finally:
+            await session.close()
