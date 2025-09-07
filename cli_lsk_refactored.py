@@ -147,7 +147,10 @@ class LSKProcessor:
                     for result in image_detect_results:
                         result.detect_time = input_params.detect_time
                 detect_results.append(
-                    {"image_id": image_id, "detections": image_detect_results}
+                    {
+                        "image_id": image_id,
+                        "detections": [r.model_dump() for r in image_detect_results],
+                    }
                 )
 
             # Process runway segmentation
