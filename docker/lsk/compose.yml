@@ -33,7 +33,7 @@ services:
   ship_eo_service:
     <<: *base-service
     container_name: avt_ship_eo_detection
-    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk.py"
+    command: conda run --no-capture-output -n avt-detection bash -c "mkdir -p ./tmp/ && python cli_lsk_refactored.py"
     image: avt-lee:latest
     depends_on:
       - base_image

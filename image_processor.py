@@ -368,4 +368,3 @@ class ImageProcessor:
     def set_input_params(self, input_params: DetectionInputParam):
         """Set input parameters for processing."""
         self.input_params = input_params
-
