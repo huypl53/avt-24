@@ -10,7 +10,7 @@ from utils.cfar import CFARParams
 
 class TaskParamModel(BaseModel):
     detect_time: Optional[str] = Field(
-        default_factory=lambda: datetime.utcnow().isoformat()
+        default_factory=lambda: datetime.utcnow().isoformat() + 'Z'
     )
     pass
 
