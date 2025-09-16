@@ -141,7 +141,7 @@ class LSKProcessor:
             if success and classes_results is not None and len(classes_results):
                 # Process detection results
                 image_detect_results = self.image_processor.process_detection_results(
-                    classes_results, image_id, im_th
+                    classes_results, image_id, im_th, detect_time=input_params.detect_time
                 )
                 if input_params.detect_time:
                     for result in image_detect_results:
