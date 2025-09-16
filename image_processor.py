@@ -9,6 +9,7 @@ from mmdet.apis import init_detector
 from mmrotate.apis import inference_detector_by_patches
 from mmseg.apis import inference_segmentor, init_segmentor
 import logging
+import datetime
 
 from app.schema import (
     DetectionInputParam,
@@ -198,7 +199,7 @@ class ImageProcessor:
             return None, False
 
     def process_detection_results(
-        self, classes_results: np.ndarray, image_id: str, im_th: int
+        self, classes_results: np.ndarray, image_id: str, im_th: int, detect_time: str | None = None
     ) -> List[ExtractedObject]:
         """Process detection results and return extracted objects."""
         if not classes_results or not len(classes_results):
@@ -295,9 +296,17 @@ class ImageProcessor:
                 coords = c.tolist()
                 w, h = c[2:4]
                 cls_target, score = spatial_classify(w, h)
-                write_text_file(" ".join([str(i) for i in coords]), patch_lb_path)
+                coords[-1] = score
+                extra_strs = []
+                if detect_time:
+                    try:
+                        t = datetime.datetime.fromisoformat(detect_time).timestamp()
+                        extra_strs.append(str(t))
+                    except Exception as e:
+                        logger.warning(e)
+                write_text_file(" ".join([str(i) for i in coords] + extra_strs), patch_lb_path)
 
-                detect_obj_id = f"{im_th:03d}-{lb_im_id}-{cls_name}"
+                detect_obj_id = f"{im_th:03d}-{lb_im_id}-{cls_target}"
                 image_detect_results.append(
                     ExtractedObject(
                         id=detect_obj_id,

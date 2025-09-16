@@ -1,6 +1,5 @@
 version: "3.8"
 
-
 x-base-service: &base-service
   image: avt-lee:latest
   build:
@@ -12,7 +11,8 @@ x-base-service: &base-service
     - ../../../data/:/workspace/data
   environment:
     - NVIDIA_VISIBLE_DEVICES=all # Ensure all GPUs are accessible
-  shm_size: '8g'
+    - TZ=Asia/Ho_Chi_Minh
+  shm_size: "8g"
   container_name: lsk-base
   deploy:
     resources:
@@ -25,8 +25,8 @@ x-base-service: &base-service
   working_dir: /workspace/avt-detection
 
 services:
-  base_image: 
-    <<: *base-service  # Use the same base service config to build the image
+  base_image:
+    <<: *base-service # Use the same base service config to build the image
     container_name: avt_base_detect
     command: ["/bin/true"]
 
